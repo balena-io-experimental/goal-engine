@@ -1,17 +1,21 @@
 {
 	"compilerOptions": {
+		"baseUrl": "./",
 		"module": "commonjs",
 		"outDir": "build",
-		"noUnusedParameters": true,
-		"noUnusedLocals": true,
 		"removeComments": true,
 		"sourceMap": true,
 		"strict": true,
 		"target": "es2015",
 		"declaration": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"paths": {
+			"testing": ["tests/chai.ts"]
+		},
+		"lib": ["es2021"]
 	},
 	"include": [
-		"lib/**/*.ts"
+		"lib/**/*.ts",
+		"tests/**/*.ts"
 	]
 }
