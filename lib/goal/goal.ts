@@ -1,88 +1,201 @@
-// Goal descriptor
-type GoalSpec<Context = any> = {
-	// Goals that need to be achieved before the action for the current goal
-	// can be run. These are only checked if the condition function returns false
-	if?: Array<Goal<Context>>;
+// Utility type to make some properties of a type optional
+type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
-	// Condition function to verify that the goal has been reached. Other than the
-	// id is the only required property. A goal with no action is just a condition
-	test: (context: Context) => Promise<boolean>;
+// A state is a function that reads some asynchronous state
+export type State<TContext = any, TState = any> = (
+	c: TContext,
+) => Promise<TState>;
 
-	// The try funtion will be run if the condition is false and all
-	// the before goals have been achieved.
-	// Running the action expects to make the next evaluation of the condition function
-	// return `true` (although it is not guaranteed)
-	try?: (context: Context) => any;
+// A test checks checks a piece of test against a condition
+type Test<TContext = any, TState = any> = (c: TContext, s: TState) => boolean;
 
-	// Set of goals that need to be achieved after the action is run
-	// e.g. writing a file in the system requires a reboot for a configuration to apply
-	// then a post-goal would be "boot-time > file-mtimem"
-	after?: Array<Goal<Context>>;
-};
+// An action perfors an asynchronouse operation based on a given
+// context and some current state
+type Action<TContext = any, TState = any> = (
+	c: TContext,
+	s: TState,
+) => Promise<unknown>;
 
-// A Goal is function that will try to do something and will return true
-// if the goal is achieved or false if the goal could not be achieved. It may
-// return an error
-// TODO: this might be a good place to return an Either
-export type Goal<Context = any> = (context: Context) => Promise<boolean>;
+export interface Seekable<TContext = any, TState = any> {
+	// How to read the state
+	readonly state: State<TContext, TState>;
 
-export function Goal<Context = any>(
-	test: (context: Context) => Promise<boolean>,
-) {
-	const GoalBuilder = (goal: GoalSpec<Context>) => ({
-		try: (action: (context: Context) => Promise<any>) =>
-			GoalBuilder({ ...goal, try: action }),
+	// How to test if the state matches the goal that we are seeking
+	readonly test: Test<TContext, TState>;
 
-		if: (before: Goal<Context>) =>
-			GoalBuilder({ ...goal, if: [...(goal.if ?? []), before] }),
+	// If the goal has not been met, the action should let us reach the
+	// goal given that all pre-conditions (or before-goals) are met
+	readonly action: Action<TContext, TState>;
 
-		after: (after: Goal<Context>) =>
-			GoalBuilder({ ...goal, after: [...(goal.after ?? []), after] }),
+	// Requirements that need to be before entering the state
+	// through the action
+	readonly before: Array<Seekable<TContext, TState>>;
 
-		/**
-		 * The ready function creates the goal
-		 */
-		ready: (): Goal<Context> => async (context: Context) => {
-			// Test the goal first
-			if (await goal.test(context)) {
-				return true;
-			}
+	// Requirements that need to be met after entering the state
+	readonly after: Array<Seekable<TContext, TState>>;
 
-			if (goal.if) {
-				const preConditionsMissing =
-					(await Promise.all(goal.if.map((g) => g(context)))).filter((r) => !r)
-						.length > 0;
-				if (preConditionsMissing) {
-					// Cannot try the goal action since some preconditions are not met
-					return false;
-				}
-			}
-
-			// If the goal has not been achieved yet and all preconditions have
-			// been met
-			if (goal.try) {
-				// Perform the local action
-				await goal.try(context);
-			}
-
-			// Test the goal one more time and return that
-			if (!(await goal.test(context))) {
-				return false;
-			}
-
-			// If there are any post conditions check that all post-conditions are
-			// achieved
-			if (goal.after) {
-				return (
-					(await Promise.all(goal.after.map((g) => g(context)))).filter(
-						(r) => !r,
-					).length > 0
-				);
-			}
-
-			return true;
-		},
-	});
-
-	return GoalBuilder({ test });
+	// TODO: should we add `always`, as invariants that need to be met both
+	// before and after?
 }
+
+// This is the interface users will most likely operate with
+export interface Goal<TContext = any, TState = any>
+	extends Seekable<TContext, TState> {
+	map<TInputContext>(
+		f: (c: TInputContext) => TContext,
+	): Goal<TInputContext, TState>;
+	seek(c: TContext): Promise<boolean>;
+}
+
+/**
+ * Create a goal from a given Seekable interface
+ */
+export function of<TContext = any, TState = any>({
+	state,
+	test,
+	action = () => Promise.resolve(void 0),
+	before = [],
+	after = [],
+}: WithOptional<
+	Seekable<TContext, TState>,
+	'action' | 'before' | 'after'
+>): Goal<TContext, TState> {
+	const goal = {
+		state,
+		test,
+		action,
+		before,
+		after,
+		map<TInputContext>(
+			f: (c: TInputContext) => TContext,
+		): Goal<TInputContext, TState> {
+			return map(goal, f);
+		},
+		seek(c: TContext): Promise<boolean> {
+			return seek(goal, c);
+		},
+	};
+
+	return goal;
+}
+
+/**
+ * Transform a goal that receives a context A  into a goal that receives
+ * a context B by applying a transformation function
+ */
+export function map<TContext = any, TState = any, TInputContext = any>(
+	g: Seekable<TContext, TState>,
+	f: (c: TInputContext) => TContext,
+): Goal<TInputContext, TState> {
+	return of({
+		state: (c: TInputContext) => g.state(f(c)),
+		test: (c: TInputContext, s: TState) => g.test(f(c), s),
+		action: (c: TInputContext, s: TState) => g.action(f(c), s),
+	});
+}
+
+/**
+ * Try to reach the goal given an initial context
+ */
+export async function seek<TContext = any, TState = any>(
+	goal: Seekable<TContext, TState>,
+	ctx: TContext,
+
+	// TODO: use TaskEither<Error, boolean> as the re
+): Promise<boolean> {
+	const s = await goal.state(ctx);
+	if (goal.test(ctx, s)) {
+		// The goal has been met
+		return true;
+	}
+
+	// Test the before goals. By default they will be
+	// tested in parallel
+	// TODO: we need a way to specify goals that need to be run in sequence
+	const preconditions = await Promise.all(goal.before.map((g) => seek(g, ctx)));
+	if (preconditions.filter((met) => !met).length > 0) {
+		// Cannot try the goal action since some preconditions are not met
+		return false;
+	}
+
+	// Run the action
+	await goal.action(ctx, s);
+
+	// Get the state again and run the test with the
+	// new state. If the state could not be met, something
+	// failed (reason is unknown at this point)
+	if (!goal.test(ctx, await goal.state(ctx))) {
+		return false;
+	}
+
+	// The goal is achieved if the postconditions are met. Postconditions are tested
+	// in parallel, but a sequence can be tested if
+	const postconditions = await Promise.all(goal.after.map((g) => seek(g, ctx)));
+	return postconditions.filter((met) => !met).length === 0;
+}
+
+// A goal builder is a helper interface to build a goal
+export interface Builder<TContext = any, TState = any> {
+	try(a: Action<TContext, TState>): Builder<TContext, TState>;
+	requires(b: Seekable<TContext, TState>): Builder<TContext, TState>;
+	after(a: Seekable<TContext, TState>): Builder<TContext, TState>;
+	create(): Goal<TContext, TState>;
+}
+
+// Build a goal builder. This is not exported as it's meant
+// to be used with the `Goal` helper function
+function Builder<TContext, TState>(
+	goal: Seekable<TContext, TState>,
+): Builder<TContext, TState> {
+	return {
+		try(action: Action<TContext, TState>) {
+			return Builder({ ...goal, action });
+		},
+		requires(g: Seekable<TContext, TState>) {
+			return Builder({ ...goal, before: [...goal.before, g] });
+		},
+		after(g: Seekable<TContext, TState>) {
+			return Builder({ ...goal, after: [...goal.after, g] });
+		},
+		create() {
+			return of(goal);
+		},
+	};
+}
+
+/**
+ * Helper function to create a goal
+ * starting from a state and an optional test
+ *
+ * @example
+ * // Does not need a test because the state is either true or false
+ * const DirectoryExists = Goal(({ directory }) =>
+ *    fs
+ *      .access(directory)
+ *      .then(() => true)
+ *      .catch(() => false),
+ *  )
+ *  .create()
+ */
+export function Goal<TContext>(
+	state: State<TContext, boolean>,
+): Builder<TContext, boolean>;
+export function Goal<TContext, TState>(
+	state: State<TContext, TState>,
+	test: Test<TContext, TState>,
+): Builder<TContext, TState>;
+export function Goal<TContext, TState>(
+	state: State<TContext, TState>,
+	test?: Test<TContext, TState>,
+) {
+	return Builder({
+		state,
+		// The default will only be used if TState is a boolean
+		test: test || ((_: TContext, s: TState) => !!s),
+		action: () => Promise.resolve(void 0),
+		before: [],
+		after: [],
+	});
+}
+
+export const identity = <A>(a: A): A => a;
