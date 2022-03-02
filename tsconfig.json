@@ -10,7 +10,7 @@
 		"declaration": true,
 		"skipLibCheck": true,
 		"paths": {
-			"testing": ["tests/chai.ts"]
+			"~/tests": ["tests/chai.ts"]
 		},
 		"lib": ["es2021"]
 	},

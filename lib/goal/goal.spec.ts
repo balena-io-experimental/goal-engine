@@ -1,84 +1,285 @@
-import { expect } from 'testing';
-import { promises as fs } from 'fs';
-import * as path from 'path';
+import { expect } from '~/tests';
 
 import { Goal, seek } from './goal';
-import * as mockfs from 'mock-fs';
+import * as sinon from 'sinon';
 
 describe('Goal', function () {
-	// Simple goal for a directory to exist
-	const DirectoryExists = Goal(({ directory }) =>
-		fs
-			.access(directory)
-			.then(() => true)
-			.catch(() => false),
-	)
-		.try(({ directory }) => fs.mkdir(directory, { recursive: true }))
-		.create();
+	describe('Building a goal', () => {
+		it('infers the goal test function if the goal returns a boolean', () => {
+			// state is always true
+			const myGoal = Goal(() => Promise.resolve(true)).create();
 
-	// LockAcquired is achieved if the file exists and we have ownership of the lock
-	const LockAcquired = Goal(
-		({
-			directory,
-			uid = process.getuid(),
-		}: {
-			directory: string;
-			uid?: number;
-		}) =>
-			Promise.all(
-				['updates.lock']
-					.map((f) => path.join(directory, f))
-					.map((f) =>
-						fs
-							.access(f)
-							.then(() => fs.stat(f))
-							.then((stat) => stat.uid === uid),
-					),
+			expect(myGoal.test(void 0, true)).to.be.true;
+			expect(myGoal.test(void 0, false)).to.be.false;
+		});
+
+		it('allows to define the test function even if the goal returns a boolean', () => {
+			// state is always true
+			const myGoal = Goal(
+				() => Promise.resolve(true),
+				(_: unknown, s) => !s,
+			).create();
+
+			expect(myGoal.test(void 0, true)).to.be.false;
+			expect(myGoal.test(void 0, false)).to.be.true;
+		});
+	});
+
+	describe('Seeking a goal', () => {
+		it('succeeds if the goal has already been reached', async () => {
+			const actionSpy = sinon.spy();
+
+			// goal that is always true
+			const myGoal = Goal(() => Promise.resolve(true))
+				.try(actionSpy)
+				.create();
+
+			expect(await seek(myGoal, void 0)).to.be.true;
+			expect(actionSpy).to.not.have.been.called;
+		});
+
+		it('fails if the goal has not been reached and there is no way to modify the state', async () => {
+			type S = { count: number };
+			type C = { threshold: number };
+
+			const state: S = { count: 0 };
+
+			// another more complex goal
+			const myGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			).create();
+
+			expect(await seek(myGoal, { threshold: 5 })).to.be.false;
+
+			// state changes
+			state.count = 6;
+
+			// Now the goal succeeds
+			expect(await seek(myGoal, { threshold: 5 })).to.be.true;
+		});
+
+		it('calls the action to change the state if the goal has not been met yet', async () => {
+			const actionSpy = sinon.spy();
+
+			type S = { count: number };
+			type C = { threshold: number };
+
+			const state: S = { count: 0 };
+
+			// another more complex goal
+			const myGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
 			)
-				.then((res) => res.filter((r) => !r).length === 0)
-				.catch(() => false),
-	)
-		.requires(DirectoryExists.map(({ directory }) => ({ directory })))
-		.try(({ directory }) =>
-			// Try to take the lock (the test just uses touch, but )
-			// TODO: what if multiple goals are trying to take the lock at the same time?
-			// What if the goal that takes the lock releases it before the other goals are finished
-			Promise.all(
-				['updates.lock']
-					.map((f) => path.join(directory, f))
-					.map((f) => fs.open(f, 'w').then((fd) => fd.close())),
-			),
-		)
-		.create();
+				.try(actionSpy) // the action has no effect but it should be called nonetheless
+				.create();
 
-	it('seeking the goal should do nothing if the goal has already been achieved', async function () {
-		mockfs({ '/tmp': { 'updates.lock': '' } });
+			expect(await seek(myGoal, { threshold: 5 })).to.be.false;
 
-		await expect(LockAcquired.seek({ directory: '/tmp' })).to.eventually.be
-			.true;
-		await expect(fs.access('/tmp/updates.lock')).to.not.be.rejected;
+			// The action should be called
+			expect(actionSpy).to.have.been.calledOnce;
+		});
 
-		mockfs.restore();
-	});
+		it('succeeds if calling the action causes the goal to be met', async () => {
+			type S = { count: number };
+			type C = { threshold: number };
 
-	it('seeking the goal should try the given action if the goal has not been achieved', async function () {
-		mockfs({ '/tmp': {} });
+			const state: S = { count: 5 };
 
-		await expect(LockAcquired.seek({ directory: '/tmp' })).to.eventually.be
-			.true;
-		await expect(fs.access('/tmp/updates.lock')).to.not.be.rejected;
+			// another more complex goal
+			const otherGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			)
+				.try(() => {
+					// Update the state
+					state.count++;
+					return Promise.resolve(void 0);
+				})
+				.create();
 
-		mockfs.restore();
-	});
+			expect(await seek(otherGoal, { threshold: 5 })).to.be.true;
+			expect(state.count).to.equal(6);
+		});
 
-	it('seeking the goal should try the before goals before peforming the given action', async function () {
-		mockfs({ '/tmp': {} });
+		it('does not try the action if before goals are not met', async () => {
+			// a goal that is never met
+			const myGoal = Goal(() => Promise.resolve(false)).create();
 
-		await expect(seek(LockAcquired, { directory: '/tmp/service-locks' })).to
-			.eventually.be.true;
-		await expect(fs.access('/tmp/service-locks/updates.lock')).to.not.be
-			.rejected;
+			type S = { count: number };
+			type C = { threshold: number };
 
-		mockfs.restore();
+			const state: S = { count: 0 };
+
+			// another more complex goal
+			const actionSpy = sinon.spy();
+			const otherGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			)
+				.try(actionSpy)
+				.before(myGoal)
+				.create();
+
+			expect(await seek(otherGoal, { threshold: 5 })).to.be.false;
+			expect(actionSpy).to.not.have.been.called;
+		});
+
+		it('only calls the action if before goals are met', async () => {
+			// a goal that is met
+			const myGoal = Goal(() => Promise.resolve(true)).create();
+
+			type S = { count: number };
+			type C = { threshold: number };
+
+			const state: S = { count: 0 };
+
+			// another more complex goal
+			const actionSpy = sinon.spy();
+			const otherGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			)
+				.try(actionSpy)
+				.before(myGoal)
+				.create();
+
+			expect(await seek(otherGoal, { threshold: 5 })).to.be.false;
+			expect(actionSpy).to.have.been.called;
+		});
+
+		it('tries to achieve before goals if the seeked goal is not met', async () => {
+			// a goal that is not met
+			const actionSpy = sinon.spy();
+			const myGoal = Goal(() => Promise.resolve(false))
+				.try(actionSpy)
+				.create();
+
+			type S = { count: number };
+			type C = { threshold: number };
+
+			const state: S = { count: 0 };
+
+			// another more complex goal
+			const otherGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			)
+				.before(myGoal)
+				.create();
+
+			expect(await seek(otherGoal, { threshold: 5 })).to.be.false;
+			expect(actionSpy).to.have.been.called;
+		});
+
+		it('does not seek after goals if the parent goal has already been met', async () => {
+			// a goal that is not met
+			const actionSpy = sinon.spy();
+			const myGoal = Goal(() => Promise.resolve(false))
+				.try(actionSpy)
+				.create();
+
+			type S = { count: number };
+			type C = { threshold: number };
+
+			const state: S = { count: 6 };
+
+			// another more complex goal
+			const otherGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			)
+				.after(myGoal)
+				.create();
+
+			expect(await seek(otherGoal, { threshold: 5 })).to.be.true;
+			expect(actionSpy).to.not.have.been.called;
+		});
+
+		it('does not seek after goals if the parent goal cannot be met', async () => {
+			// a goal that is not met
+			const actionSpy = sinon.spy();
+			const myGoal = Goal(() => Promise.resolve(false))
+				.try(actionSpy)
+				.create();
+
+			type S = { count: number };
+			type C = { threshold: number };
+
+			const state: S = { count: 0 };
+
+			// another more complex goal
+			const otherGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			)
+				.try(() => Promise.resolve(false)) // The action has no effect on the state
+				.after(myGoal)
+				.create();
+
+			expect(await seek(otherGoal, { threshold: 5 })).to.be.false;
+			expect(actionSpy).to.not.have.been.called;
+		});
+
+		it('only seeks after goals if the parent goal can be met', async () => {
+			const actionSpy = sinon.spy();
+			// a goal that is not met
+			const myGoal = Goal(() => Promise.resolve(false))
+				.try(actionSpy)
+				.create();
+
+			type S = { count: number };
+			type C = { threshold: number };
+
+			const state: S = { count: 5 };
+
+			// another more complex goal
+			const otherGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			)
+				.try(() => {
+					// Update the state
+					state.count++;
+					return Promise.resolve(void 0);
+				})
+				.after(myGoal)
+				.create();
+
+			// The after goals returns false so the goal still cannot be met
+			expect(await seek(otherGoal, { threshold: 5 })).to.be.false;
+			expect(actionSpy).to.have.been.called;
+		});
+
+		it('succeeds if after goals are able to be met', async () => {
+			const actionSpy = sinon.spy();
+			// a goal that is always met
+			const myGoal = Goal(() => Promise.resolve(true))
+				.try(actionSpy)
+				.create();
+
+			type S = { count: number };
+			type C = { threshold: number };
+
+			const state: S = { count: 5 };
+
+			// another more complex goal
+			const otherGoal = Goal<C, S>(
+				(_) => Promise.resolve(state),
+				(c, s) => s.count > c.threshold,
+			)
+				.try(() => {
+					// Update the state
+					state.count++;
+					return Promise.resolve(void 0);
+				})
+				.after(myGoal)
+				.create();
+
+			// The after goal has been met
+			expect(await seek(otherGoal, { threshold: 5 })).to.be.true;
+			expect(actionSpy).to.not.have.been.called;
+		});
 	});
 });

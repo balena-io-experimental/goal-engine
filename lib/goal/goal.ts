@@ -29,10 +29,10 @@ export interface Seekable<TContext = any, TState = any> {
 
 	// Requirements that need to be before entering the state
 	// through the action
-	readonly before: Array<Seekable<TContext, TState>>;
+	readonly before: Array<Seekable<TContext>>;
 
 	// Requirements that need to be met after entering the state
-	readonly after: Array<Seekable<TContext, TState>>;
+	readonly after: Array<Seekable<TContext>>;
 
 	// TODO: should we add `always`, as invariants that need to be met both
 	// before and after?
@@ -137,8 +137,8 @@ export async function seek<TContext = any, TState = any>(
 // A goal builder is a helper interface to build a goal
 export interface Builder<TContext = any, TState = any> {
 	try(a: Action<TContext, TState>): Builder<TContext, TState>;
-	requires(b: Seekable<TContext, TState>): Builder<TContext, TState>;
-	after(a: Seekable<TContext, TState>): Builder<TContext, TState>;
+	before(b: Seekable<TContext>): Builder<TContext, TState>;
+	after(a: Seekable<TContext>): Builder<TContext, TState>;
 	create(): Goal<TContext, TState>;
 }
 
@@ -151,10 +151,10 @@ function Builder<TContext, TState>(
 		try(action: Action<TContext, TState>) {
 			return Builder({ ...goal, action });
 		},
-		requires(g: Seekable<TContext, TState>) {
+		before(g: Seekable<TContext>) {
 			return Builder({ ...goal, before: [...goal.before, g] });
 		},
-		after(g: Seekable<TContext, TState>) {
+		after(g: Seekable<TContext>) {
 			return Builder({ ...goal, after: [...goal.after, g] });
 		},
 		create() {
