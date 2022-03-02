@@ -1,6 +1,6 @@
 import { expect } from '~/tests';
 
-import { Goal, seek } from './goal';
+import { Goal, seek, Always, Never, withAction } from './goal';
 import * as sinon from 'sinon';
 
 describe('Goal', function () {
@@ -28,11 +28,7 @@ describe('Goal', function () {
 	describe('Seeking a goal', () => {
 		it('succeeds if the goal has already been reached', async () => {
 			const actionSpy = sinon.spy();
-
-			// goal that is always true
-			const myGoal = Goal(() => Promise.resolve(true))
-				.try(actionSpy)
-				.create();
+			const myGoal = withAction(Always, actionSpy);
 
 			expect(await seek(myGoal, void 0)).to.be.true;
 			expect(actionSpy).to.not.have.been.called;
@@ -105,7 +101,7 @@ describe('Goal', function () {
 
 		it('does not try the action if before goals are not met', async () => {
 			// a goal that is never met
-			const myGoal = Goal(() => Promise.resolve(false)).create();
+			const myGoal = Never;
 
 			type S = { count: number };
 			type C = { threshold: number };
@@ -127,8 +123,7 @@ describe('Goal', function () {
 		});
 
 		it('only calls the action if before goals are met', async () => {
-			// a goal that is met
-			const myGoal = Goal(() => Promise.resolve(true)).create();
+			const myGoal = Always;
 
 			type S = { count: number };
 			type C = { threshold: number };
@@ -150,11 +145,8 @@ describe('Goal', function () {
 		});
 
 		it('tries to achieve before goals if the seeked goal is not met', async () => {
-			// a goal that is not met
 			const actionSpy = sinon.spy();
-			const myGoal = Goal(() => Promise.resolve(false))
-				.try(actionSpy)
-				.create();
+			const myGoal = withAction(Never, actionSpy);
 
 			type S = { count: number };
 			type C = { threshold: number };
@@ -174,11 +166,8 @@ describe('Goal', function () {
 		});
 
 		it('does not seek after goals if the parent goal has already been met', async () => {
-			// a goal that is not met
 			const actionSpy = sinon.spy();
-			const myGoal = Goal(() => Promise.resolve(false))
-				.try(actionSpy)
-				.create();
+			const myGoal = withAction(Never, actionSpy);
 
 			type S = { count: number };
 			type C = { threshold: number };
@@ -198,11 +187,8 @@ describe('Goal', function () {
 		});
 
 		it('does not seek after goals if the parent goal cannot be met', async () => {
-			// a goal that is not met
 			const actionSpy = sinon.spy();
-			const myGoal = Goal(() => Promise.resolve(false))
-				.try(actionSpy)
-				.create();
+			const myGoal = withAction(Never, actionSpy);
 
 			type S = { count: number };
 			type C = { threshold: number };
@@ -224,10 +210,7 @@ describe('Goal', function () {
 
 		it('only seeks after goals if the parent goal can be met', async () => {
 			const actionSpy = sinon.spy();
-			// a goal that is not met
-			const myGoal = Goal(() => Promise.resolve(false))
-				.try(actionSpy)
-				.create();
+			const myGoal = withAction(Never, actionSpy);
 
 			type S = { count: number };
 			type C = { threshold: number };
@@ -254,10 +237,7 @@ describe('Goal', function () {
 
 		it('succeeds if after goals are able to be met', async () => {
 			const actionSpy = sinon.spy();
-			// a goal that is always met
-			const myGoal = Goal(() => Promise.resolve(true))
-				.try(actionSpy)
-				.create();
+			const myGoal = withAction(Always, actionSpy);
 
 			type S = { count: number };
 			type C = { threshold: number };

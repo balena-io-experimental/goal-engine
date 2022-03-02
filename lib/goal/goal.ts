@@ -199,3 +199,17 @@ export function Goal<TContext, TState>(
 }
 
 export const identity = <A>(a: A): A => a;
+
+// A goal that is always met
+export const Always = Goal(() => Promise.resolve(true)).create();
+
+// A goal that can never be met
+export const Never = Goal(() => Promise.resolve(false)).create();
+
+// Combinator to extend a goal with an action
+export const withAction = <TContext = any, TState = any>(
+	goal: Seekable<TContext, TState>,
+	action: Action<TContext, TState>,
+): Goal<TContext, TState> => {
+	return of({ ...goal, action });
+};
