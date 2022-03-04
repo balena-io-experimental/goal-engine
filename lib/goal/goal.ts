@@ -38,6 +38,9 @@ export interface Seekable<TContext = any, TState = any> {
 // This is the interface users will most likely operate with
 export interface Goal<TContext = any, TState = any>
 	extends Seekable<TContext, TState> {
+	tries(a: Action<TContext, TState>): Goal<TContext, TState>;
+	requires(b: Seekable<TContext>): Goal<TContext, TState>;
+	afterwards(a: Seekable<TContext>): Goal<TContext, TState>;
 	map<TInputContext>(
 		f: (c: TInputContext) => TContext,
 	): Goal<TInputContext, TState>;
@@ -47,15 +50,28 @@ export interface Goal<TContext = any, TState = any>
 /**
  * Create a goal from a given Seekable interface
  */
+export function of<TContext = any>({
+	state,
+}: WithOptional<
+	Seekable<TContext, boolean>,
+	'test' | 'action' | 'before' | 'after'
+>): Goal<TContext, boolean>;
 export function of<TContext = any, TState = any>({
 	state,
 	test,
+}: WithOptional<
+	Seekable<TContext, TState>,
+	'action' | 'before' | 'after'
+>): Goal<TContext, TState>;
+export function of<TContext = any, TState = any>({
+	state,
+	test = (_: TContext, s: TState) => !!s,
 	action = () => Promise.resolve(void 0),
 	before = [],
 	after = [],
 }: WithOptional<
 	Seekable<TContext, TState>,
-	'action' | 'before' | 'after'
+	'test' | 'action' | 'before' | 'after'
 >): Goal<TContext, TState> {
 	const goal = {
 		state,
@@ -70,6 +86,15 @@ export function of<TContext = any, TState = any>({
 		},
 		seek(c: TContext): Promise<boolean> {
 			return seek(goal, c);
+		},
+		tries(a: Action<TContext, TState>) {
+			return tries(goal, a);
+		},
+		requires(b: Seekable<TContext>) {
+			return requires(goal, b);
+		},
+		afterwards(a: Seekable<TContext>) {
+			return afterwards(goal, a);
 		},
 	};
 
@@ -131,82 +156,44 @@ export async function seek<TContext = any, TState = any>(
 	return postconditions.filter((met) => !met).length === 0;
 }
 
-// A goal builder is a helper interface to build a goal
-export interface Builder<TContext = any, TState = any> {
-	try(a: Action<TContext, TState>): Builder<TContext, TState>;
-	before(b: Seekable<TContext>): Builder<TContext, TState>;
-	after(a: Seekable<TContext>): Builder<TContext, TState>;
-	create(): Goal<TContext, TState>;
-}
-
-// Build a goal builder. This is not exported as it's meant
-// to be used with the `Goal` helper function
-function Builder<TContext, TState>(
-	goal: Seekable<TContext, TState>,
-): Builder<TContext, TState> {
-	return {
-		try(action: Action<TContext, TState>) {
-			return Builder({ ...goal, action });
-		},
-		before(g: Seekable<TContext>) {
-			return Builder({ ...goal, before: [...goal.before, g] });
-		},
-		after(g: Seekable<TContext>) {
-			return Builder({ ...goal, after: [...goal.after, g] });
-		},
-		create() {
-			return of(goal);
-		},
-	};
-}
-
-/**
- * Helper function to create a goal
- * starting from a state and an optional test
- *
- * @example
- * // Does not need a test because the state is either true or false
- * const DirectoryExists = Goal(({ directory }) =>
- *    fs
- *      .access(directory)
- *      .then(() => true)
- *      .catch(() => false),
- *  )
- *  .create()
- */
-export function Goal<TContext>(
-	state: State<TContext, boolean>,
-): Builder<TContext, boolean>;
-export function Goal<TContext, TState>(
-	state: State<TContext, TState>,
-	test: Test<TContext, TState>,
-): Builder<TContext, TState>;
-export function Goal<TContext, TState>(
-	state: State<TContext, TState>,
-	test?: Test<TContext, TState>,
-) {
-	return Builder({
-		state,
-		// The default will only be used if TState is a boolean
-		test: test || ((_: TContext, s: TState) => !!s),
-		action: () => Promise.resolve(void 0),
-		before: [],
-		after: [],
-	});
-}
-
 export const identity = <A>(a: A): A => a;
 
 // A goal that is always met
-export const Always = Goal(() => Promise.resolve(true)).create();
+export const Always = of({ state: () => Promise.resolve(true) });
 
 // A goal that can never be met
-export const Never = Goal(() => Promise.resolve(false)).create();
+export const Never = of({ state: () => Promise.resolve(false) });
 
 // Combinator to extend a goal with an action
-export const withAction = <TContext = any, TState = any>(
+export const tries = <TContext = any, TState = any>(
 	goal: Seekable<TContext, TState>,
 	action: Action<TContext, TState>,
 ): Goal<TContext, TState> => {
 	return of({ ...goal, action });
 };
+
+// Combinator to extend a goal with a before goal
+export const requires = <TContext = any, TState = any>(
+	goal: Seekable<TContext, TState>,
+	before: Seekable<TContext>,
+): Goal<TContext, TState> => {
+	return of({ ...goal, before: [...goal.before, before] });
+};
+
+export const afterwards = <TContext = any, TState = any>(
+	goal: Seekable<TContext, TState>,
+	after: Seekable<TContext>,
+): Goal<TContext, TState> => {
+	return of({ ...goal, after: [...goal.after, after] });
+};
+
+export const Goal = {
+	of,
+	map,
+	seek,
+	tries,
+	requires,
+	afterwards,
+};
+
+export default Goal;
