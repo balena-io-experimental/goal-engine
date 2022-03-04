@@ -1,10 +1,7 @@
+import { State } from './state';
+
 // Utility type to make some properties of a type optional
 type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-// A state is a function that reads some asynchronous state
-export type State<TContext = any, TState = any> = (
-	c: TContext,
-) => Promise<TState>;
 
 // A test checks checks a piece of test against a condition
 type Test<TContext = any, TState = any> = (c: TContext, s: TState) => boolean;
