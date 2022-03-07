@@ -1,15 +1,9 @@
 import { State } from './state';
 import { Test } from './test';
+import { Action } from './action';
 
 // Utility type to make some properties of a type optional
 type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-// An action perfors an asynchronouse operation based on a given
-// context and some current state
-type Action<TContext = any, TState = any> = (
-	c: TContext,
-	s: TState,
-) => Promise<unknown>;
 
 export interface Seekable<TContext = any, TState = any> {
 	// How to read the state
