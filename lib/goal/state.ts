@@ -43,7 +43,7 @@ type InferStates<T extends Array<State<TContext>>, TContext = any> = T extends [
  * Combine an array of state objects into a state that returns a tuple of
  * results
  */
-export const tuple =
+const tuple =
 	<
 		TContext = any,
 		TState = any,
@@ -65,18 +65,16 @@ export const tuple =
  * combinators from incompatible types, however such combinators are unusable as the type
  * signature won't match anything.
  */
-export const dict =
+const dict =
 	<
 		TStateDict extends {
 			[K in keyof TState]: State<any, TState[K]>;
 		},
 		TContext extends InferContext<TStateDict, TState>,
 		TState = any,
-	>(
-		props: {
-			[K in keyof TState]: State<TContext, TState[K]>;
-		} & TStateDict,
-	): State<TContext, { [K in keyof TState]: TState[K] }> =>
+	>(props: {
+		[K in keyof TState]: State<TContext, TState[K]>;
+	}): State<TContext, { [K in keyof TState]: TState[K] }> =>
 	async (c: TContext) => {
 		// Get the individual states first as an array
 		const states = await Promise.all(
@@ -169,8 +167,6 @@ export function of<
 export const State = {
 	of,
 	map,
-	tuple,
-	dict,
 };
 
 export default State;
