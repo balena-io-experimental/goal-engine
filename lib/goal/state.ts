@@ -56,11 +56,12 @@ const tuple =
 		Promise.all([first, ...elems].map((s) => s(c))) as Promise<
 			[TState, ...InferStates<TRest, TContext>]
 		>;
+
 /**
  * Combine a dictionary of state objects into a state that returns a dictionary of
  * the results.
  *
- * **Note**: All state objects must have the same type
+ * **Note**: All state objects must have the same context type
  * TODO: we have not found a way to reliably validate the inputs to prevent creating
  * combinators from incompatible types, however such combinators are unusable as the type
  * signature won't match anything.
@@ -110,7 +111,7 @@ export function of<
  * Combine a dictionary of state objects into a state that returns a dictionary of
  * the results.
  *
- * **Note**: All state objects must have the same type
+ * **Note**: All state objects must have the same context type
  * TODO: we have not found a way to reliably validate the inputs to prevent creating
  * combinators from incompatible types, however such combinators are unusable as the type
  * signature won't match anything.

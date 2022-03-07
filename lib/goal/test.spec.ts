@@ -58,7 +58,7 @@ describe('Test', () => {
 	});
 
 	describe('map', () => {
-		it('create a new State by using a transformation function', async () => {
+		it('create a new Test by using a transformation function', async () => {
 			const numGtFive = (x: number, _: number) => x > 5;
 			const lenGtFive = Test.map(numGtFive, (s: string) => s.length);
 
