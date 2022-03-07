@@ -26,10 +26,10 @@ export interface Seekable<TContext = any, TState = any> {
 
 	// Requirements that need to be before entering the state
 	// through the action
-	readonly before: Array<Seekable<TContext>>;
+	readonly before: Seekable<TContext>;
 
 	// Requirements that need to be met after entering the state
-	readonly after: Array<Seekable<TContext>>;
+	readonly after: Seekable<TContext>;
 
 	// TODO: should we add `always`, as invariants that need to be met both
 	// before and after?
@@ -67,8 +67,8 @@ export function of<TContext = any, TState = any>({
 	state,
 	test = (_: TContext, s: TState) => !!s,
 	action = () => Promise.resolve(void 0),
-	before = [],
-	after = [],
+	before = Always,
+	after = Always,
 }: WithOptional<
 	Seekable<TContext, TState>,
 	'test' | 'action' | 'before' | 'after'
@@ -131,11 +131,8 @@ export async function seek<TContext = any, TState = any>(
 		return true;
 	}
 
-	// Test the before goals. By default they will be
-	// tested in parallel
-	// TODO: we need a way to specify goals that need to be run in sequence
-	const preconditions = await Promise.all(goal.before.map((g) => seek(g, ctx)));
-	if (preconditions.filter((met) => !met).length > 0) {
+	// Check if pre-conditions are met
+	if (!(await seek(goal.before, ctx))) {
 		// Cannot try the goal action since some preconditions are not met
 		return false;
 	}
@@ -150,10 +147,8 @@ export async function seek<TContext = any, TState = any>(
 		return false;
 	}
 
-	// The goal is achieved if the postconditions are met. Postconditions are tested
-	// in parallel, but a sequence can be tested if
-	const postconditions = await Promise.all(goal.after.map((g) => seek(g, ctx)));
-	return postconditions.filter((met) => !met).length === 0;
+	// The goal is achieved if the postconditions are met.
+	return seek(goal.after, ctx);
 }
 
 export const identity = <A>(a: A): A => a;
@@ -177,14 +172,14 @@ export const requires = <TContext = any, TState = any>(
 	goal: Seekable<TContext, TState>,
 	before: Seekable<TContext>,
 ): Goal<TContext, TState> => {
-	return of({ ...goal, before: [...goal.before, before] });
+	return of({ ...goal, before });
 };
 
 export const afterwards = <TContext = any, TState = any>(
 	goal: Seekable<TContext, TState>,
 	after: Seekable<TContext>,
 ): Goal<TContext, TState> => {
-	return of({ ...goal, after: [...goal.after, after] });
+	return of({ ...goal, after });
 };
 
 export const Goal = {
