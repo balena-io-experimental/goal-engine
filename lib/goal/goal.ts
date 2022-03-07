@@ -102,9 +102,11 @@ export function map<TContext = any, TState = any, TInputContext = any>(
 	f: (c: TInputContext) => TContext,
 ): Goal<TInputContext, TState> {
 	return of({
-		state: (c: TInputContext) => g.state(f(c)),
-		test: (c: TInputContext, s: TState) => g.test(f(c), s),
-		action: (c: TInputContext, s: TState) => g.action(f(c), s),
+		state: State.map(g.state, f),
+		test: Test.map(g.test, f),
+		action: Action.map(g.action, f),
+		before: map(g.before, f),
+		after: map(g.after, f),
 	});
 }
 
