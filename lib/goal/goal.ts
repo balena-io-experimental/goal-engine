@@ -1,10 +1,8 @@
 import { State } from './state';
+import { Test } from './test';
 
 // Utility type to make some properties of a type optional
 type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-// A test checks checks a piece of test against a condition
-type Test<TContext = any, TState = any> = (c: TContext, s: TState) => boolean;
 
 // An action perfors an asynchronouse operation based on a given
 // context and some current state
