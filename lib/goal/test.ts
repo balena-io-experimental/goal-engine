@@ -18,18 +18,18 @@ export const map =
 	(c: TOtherContext, s: TState) =>
 		t(f(c), s);
 
-type InferStates<T extends Array<Test<TContext>>, TContext = any> = T extends [
+type TupleStates<T extends Array<Test<TContext>>, TContext = any> = T extends [
 	Test<TContext, infer TState>,
 	...infer TTail
 ]
 	? TTail extends Array<Test<TContext>>
-		? [TState, ...InferStates<TTail, TContext>]
+		? [TState, ...TupleStates<TTail, TContext>]
 		: [TState]
 	: [];
 
 // Infer the context from a dictionary. This will only make sense if all the states
 // have the same context otherwise it will return invalid types like `number & string`
-type InferContext<
+type DictionaryContext<
 	T extends { [K in keyof TState]: Test<any, TState[K]> },
 	TState = any,
 > = T extends {
@@ -46,7 +46,7 @@ function allInDict<
 	TStateDict extends {
 		[K in keyof TState]: Test<any, TState[K]>;
 	},
-	TContext extends InferContext<TStateDict, TState>,
+	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
 >(tests: {
 	[K in keyof TState]: Test<TContext, TState[K]>;
@@ -62,14 +62,13 @@ function allInDict<
 function allInTuple<
 	TContext = any,
 	TState = any,
-	TRest extends Array<Test<TContext>> = Array<Test<TContext, any>>,
->([first, ...elems]: [Test<TContext, TState>, ...TRest]): Test<
-	TContext,
-	[TState, ...InferStates<TRest, TContext>]
-> {
-	return (c: TContext, s: [TState, ...InferStates<TRest, TContext>]) =>
+	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
+>(
+	tests: [Test<TContext, TState>, ...TTuple],
+): Test<TContext, [TState, ...TupleStates<TTuple, TContext>]> {
+	return (c: TContext, s: [TState, ...TupleStates<TTuple, TContext>]) =>
 		// The test will fail if there are any false results
-		[first, ...elems].filter((t, i) => !t(c, s[i])).length === 0;
+		tests.filter((t, i) => !t(c, s[i])).length === 0;
 }
 
 /**
@@ -79,11 +78,10 @@ function allInTuple<
 export function all<
 	TContext = any,
 	TState = any,
-	TRest extends Array<Test<TContext>> = Array<Test<TContext, any>>,
->([first, ...elems]: [Test<TContext, TState>, ...TRest]): Test<
-	TContext,
-	[TState, ...InferStates<TRest, TContext>]
->;
+	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
+>(
+	tests: [Test<TContext, TState>, ...TTuple],
+): Test<TContext, [TState, ...TupleStates<TTuple, TContext>]>;
 /**
  * Combine a dict of test objects into a test that returns true if all
  * tests succeed
@@ -92,7 +90,7 @@ export function all<
 	TStateDict extends {
 		[K in keyof TState]: Test<any, TState[K]>;
 	},
-	TContext extends InferContext<TStateDict, TState>,
+	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
 >(
 	tests: {
@@ -125,14 +123,13 @@ export function all<
 function anyInTuple<
 	TContext = any,
 	TState = any,
-	TRest extends Array<Test<TContext>> = Array<Test<TContext, any>>,
->([first, ...elems]: [Test<TContext, TState>, ...TRest]): Test<
-	TContext,
-	[TState, ...InferStates<TRest, TContext>]
-> {
-	return (c: TContext, s: [TState, ...InferStates<TRest, TContext>]) =>
+	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
+>(
+	tests: [Test<TContext, TState>, ...TTuple],
+): Test<TContext, [TState, ...TupleStates<TTuple, TContext>]> {
+	return (c: TContext, s: [TState, ...TupleStates<TTuple, TContext>]) =>
 		// The test will fail if there are any false results
-		[first, ...elems].filter((t, i) => t(c, s[i])).length > 0;
+		tests.filter((t, i) => t(c, s[i])).length > 0;
 }
 
 /**
@@ -143,7 +140,7 @@ function anyInDict<
 	TStateDict extends {
 		[K in keyof TState]: Test<any, TState[K]>;
 	},
-	TContext extends InferContext<TStateDict, TState>,
+	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
 >(tests: {
 	[K in keyof TState]: Test<TContext, TState[K]>;
@@ -159,11 +156,10 @@ function anyInDict<
 export function any<
 	TContext = any,
 	TState = any,
-	TRest extends Array<Test<TContext>> = Array<Test<TContext, any>>,
->([first, ...elems]: [Test<TContext, TState>, ...TRest]): Test<
-	TContext,
-	[TState, ...InferStates<TRest, TContext>]
->;
+	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
+>(
+	tests: [Test<TContext, TState>, ...TTuple],
+): Test<TContext, [TState, ...TupleStates<TTuple, TContext>]>;
 /**
  * Combine a dict of test objects into a test that returns true if
  * any of the tests succeed
@@ -172,7 +168,7 @@ export function any<
 	TStateDict extends {
 		[K in keyof TState]: Test<any, TState[K]>;
 	},
-	TContext extends InferContext<TStateDict, TState>,
+	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
 >(
 	tests: {
@@ -204,16 +200,15 @@ export function any<
 export function of<
 	TContext = any,
 	TState = any,
-	TRest extends Array<Test<TContext>> = Array<Test<TContext, any>>,
->([first, ...elems]: [Test<TContext, TState>, ...TRest]): Test<
-	TContext,
-	[TState, ...InferStates<TRest, TContext>]
->;
+	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
+>(
+	tests: [Test<TContext, TState>, ...TTuple],
+): Test<TContext, [TState, ...TupleStates<TTuple, TContext>]>;
 export function of<
 	TStateDict extends {
 		[K in keyof TState]: Test<any, TState[K]>;
 	},
-	TContext extends InferContext<TStateDict, TState>,
+	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
 >(tests: {
 	[K in keyof TState]: Test<TContext, TState[K]>;

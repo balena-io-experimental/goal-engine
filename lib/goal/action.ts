@@ -19,12 +19,12 @@ export const map =
 	(c: TOtherContext, s: TState) =>
 		a(f(c), s);
 
-type InferStates<
+type TupleStates<
 	T extends Array<Action<TContext>>,
 	TContext = any,
 > = T extends [Action<TContext, infer TState>, ...infer TTail]
 	? TTail extends Array<Action<TContext>>
-		? [TState, ...InferStates<TTail, TContext>]
+		? [TState, ...TupleStates<TTail, TContext>]
 		: [TState]
 	: [];
 
@@ -36,17 +36,17 @@ const tuple =
 	<
 		TContext = any,
 		TState = any,
-		TRest extends Array<Action<TContext>> = Array<Action<TContext, any>>,
-	>([first, ...actions]: [Action<TContext, TState>, ...TRest]): Action<
+		TTuple extends Array<Action<TContext>> = Array<Action<TContext, any>>,
+	>([head, ...tail]: [Action<TContext, TState>, ...TTuple]): Action<
 		TContext,
-		[TState, ...InferStates<TRest, TContext>]
+		[TState, ...TupleStates<TTuple, TContext>]
 	> =>
-	(c: TContext, s: [TState, ...InferStates<TRest, TContext>]) =>
-		Promise.all([first, ...actions].map((a, i) => a(c, s[i])));
+	(c: TContext, s: [TState, ...TupleStates<TTuple, TContext>]) =>
+		Promise.all([head, ...tail].map((a, i) => a(c, s[i])));
 
 // Infer the context from a dictionary. This will only make sense if all the actions
 // have the same context otherwise it will return invalid types like `number & string`
-type InferContext<
+type DictionaryContext<
 	T extends { [K in keyof TState]: Action<any, TState[K]> },
 	TState = any,
 > = T extends {
@@ -69,7 +69,7 @@ const dict =
 		TStateDict extends {
 			[K in keyof TState]: Action<any, TState[K]>;
 		},
-		TContext extends InferContext<TStateDict, TState>,
+		TContext extends DictionaryContext<TStateDict, TState>,
 		TState = any,
 	>(actions: {
 		[K in keyof TState]: Action<TContext, TState[K]>;
@@ -91,10 +91,10 @@ const dict =
 export function of<
 	TContext = any,
 	TState = any,
-	TRest extends Array<Action<TContext>> = Array<Action<TContext, any>>,
->([first, ...actions]: [Action<TContext, TState>, ...TRest]): Action<
+	TTuple extends Array<Action<TContext>> = Array<Action<TContext, any>>,
+>([head, ...tail]: [Action<TContext, TState>, ...TTuple]): Action<
 	TContext,
-	[TState, ...InferStates<TRest, TContext>]
+	[TState, ...TupleStates<TTuple, TContext>]
 >;
 /**
  * Combine a dictionary of action objects into an action that operates on a dictionary of
@@ -109,7 +109,7 @@ export function of<
 	TStateDict extends {
 		[K in keyof TState]: Action<any, TState[K]>;
 	},
-	TContext extends InferContext<TStateDict, TState>,
+	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
 >(
 	actions: {

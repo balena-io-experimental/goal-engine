@@ -21,7 +21,7 @@ export const map =
 
 // Infer the context from a dictionary. This will only make sense if all the states
 // have the same context otherwise it will return invalid types like `number & string`
-type InferContext<
+type DictionaryContext<
 	T extends { [K in keyof TState]: State<any, TState[K]> },
 	TState = any,
 > = T extends {
@@ -30,12 +30,12 @@ type InferContext<
 	? TContext
 	: never;
 
-type InferStates<T extends Array<State<TContext>>, TContext = any> = T extends [
-	State<TContext, infer TState>,
-	...infer TTail
-]
+type TupleStates<
+	T extends Array<State<TContext>> = [],
+	TContext = any,
+> = T extends [State<TContext, infer TState>, ...infer TTail]
 	? TTail extends Array<State<TContext>>
-		? [TState, ...InferStates<TTail, TContext>]
+		? [TState, ...TupleStates<TTail, TContext>]
 		: [TState]
 	: [];
 
@@ -47,14 +47,13 @@ const tuple =
 	<
 		TContext = any,
 		TState = any,
-		TRest extends Array<State<TContext>> = Array<State<TContext, any>>,
-	>([first, ...elems]: [State<TContext, TState>, ...TRest]): State<
-		TContext,
-		[TState, ...InferStates<TRest, TContext>]
-	> =>
+		TTuple extends Array<State<TContext>> = Array<State<TContext>>,
+	>(
+		states: [State<TContext, TState>, ...TTuple],
+	): State<TContext, [TState, ...TupleStates<TTuple, TContext>]> =>
 	(c: TContext) =>
-		Promise.all([first, ...elems].map((s) => s(c))) as Promise<
-			[TState, ...InferStates<TRest, TContext>]
+		Promise.all(states.map((s) => s(c))) as Promise<
+			[TState, ...TupleStates<TTuple, TContext>]
 		>;
 
 /**
@@ -71,16 +70,16 @@ const dict =
 		TStateDict extends {
 			[K in keyof TState]: State<any, TState[K]>;
 		},
-		TContext extends InferContext<TStateDict, TState>,
+		TContext extends DictionaryContext<TStateDict, TState>,
 		TState = any,
-	>(props: {
+	>(states: {
 		[K in keyof TState]: State<TContext, TState[K]>;
 	}): State<TContext, { [K in keyof TState]: TState[K] }> =>
 	async (c: TContext) => {
 		// Get the individual states first as an array
-		const states = await Promise.all(
-			keys(props).map((k) =>
-				props[k](c).then(
+		const values = await Promise.all(
+			keys(states).map((k) =>
+				states[k](c).then(
 					// The type assertion is needed as typescript is not smart enough
 					// to figure it out
 					(s) => ({ [k]: s } as { [K in keyof TState]: TState[K] }),
@@ -89,7 +88,7 @@ const dict =
 		);
 
 		// Combine the individual states into a single object
-		return states.reduce(
+		return values.reduce(
 			(combined, s) => ({ ...combined, ...s }),
 			{} as { [K in keyof TState]: TState[K] },
 		);
@@ -102,11 +101,10 @@ const dict =
 export function of<
 	TContext = any,
 	TState = any,
-	TRest extends Array<State<TContext>> = Array<State<TContext, any>>,
->([first, ...elems]: [State<TContext, TState>, ...TRest]): State<
-	TContext,
-	[TState, ...InferStates<TRest, TContext>]
->;
+	TTuple extends Array<State<TContext>> = Array<State<TContext>>,
+>(
+	states: [State<TContext, TState>, ...TTuple],
+): State<TContext, [TState, ...TupleStates<TTuple, TContext>]>;
 /**
  * Combine a dictionary of state objects into a state that returns a dictionary of
  * the results.
@@ -131,10 +129,10 @@ export function of<
 	TStateDict extends {
 		[K in keyof TState]: State<any, TState[K]>;
 	},
-	TContext extends InferContext<TStateDict, TState>,
+	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
 >(
-	props: {
+	states: {
 		[K in keyof TState]: State<TContext, TState[K]>;
 	} & TStateDict,
 ): State<TContext, { [K in keyof TState]: TState[K] }>;
