@@ -7,6 +7,9 @@ export type Action<TContext = any, TState = any> = (
 	s: TState,
 ) => Promise<unknown>;
 
+export const isAction = (x: unknown): x is Action =>
+	x != null && typeof x === 'function';
+
 /**
  * Transform an action that receives a context A into an action that receives
  * a context B by applying a transformation function
@@ -141,6 +144,7 @@ export function of<
 
 // Utility export
 export const Action = {
+	is: isAction,
 	of,
 	map,
 	fromDict,

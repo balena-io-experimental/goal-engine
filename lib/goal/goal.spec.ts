@@ -4,16 +4,32 @@ import { Goal, Always, Never } from './goal';
 import * as sinon from 'sinon';
 
 describe('Goal', function () {
-	describe('Building a goal', () => {
-		it('infers the goal test function if the goal returns a boolean', () => {
+	describe('map', () => {
+		it('creates a goal with a different context type from an input goal', async () => {
+			const LessThan256Chars = Goal.of({
+				state: (x: number) => Promise.resolve(x <= 255),
+			});
+			const StringIsLessThan256Chars = Goal.map(
+				LessThan256Chars,
+				(x: string) => x.length,
+			);
+
+			expect(await StringIsLessThan256Chars.seek('hello')).to.be.true;
+			expect(await StringIsLessThan256Chars.seek('a'.repeat(256))).to.be.false;
+		});
+	});
+
+	describe('of', () => {
+		it('infers the goal test function if the goal returns a boolean', async () => {
 			// state is always true
 			const myGoal = Goal.of({ state: () => Promise.resolve(true) });
 
 			expect(myGoal.test(void 0, true)).to.be.true;
 			expect(myGoal.test(void 0, false)).to.be.false;
+			expect(await myGoal.seek(0)).to.be.true;
 		});
 
-		it('allows to define the test function even if the goal returns a boolean', () => {
+		it('allows to define the test function even if the goal returns a boolean', async () => {
 			// state is always true
 			const myGoal = Goal.of({
 				state: () => Promise.resolve(true),
@@ -22,6 +38,7 @@ describe('Goal', function () {
 
 			expect(myGoal.test(void 0, true)).to.be.false;
 			expect(myGoal.test(void 0, false)).to.be.true;
+			expect(await myGoal.seek(0)).to.be.false;
 		});
 
 		it('allows to combine goals as a tuple', async () => {
@@ -46,13 +63,13 @@ describe('Goal', function () {
 				test: (_: string) => true,
 			});
 
-			const c = Goal.of({ number: num, string: str });
-			expect(await c.state('world')).to.deep.equal({
+			const combined = Goal.of({ number: num, string: str });
+			expect(await combined.state('world')).to.deep.equal({
 				number: 5,
 				string: 'Hello world',
 			});
 			expect(
-				c.test('world', {
+				combined.test('world', {
 					number: 5,
 					string: 'Hello world',
 				}),
@@ -60,7 +77,7 @@ describe('Goal', function () {
 		});
 	});
 
-	describe('Seeking a goal', () => {
+	describe('seek', () => {
 		it('succeeds if the goal has already been reached', async () => {
 			const actionSpy = sinon.spy();
 			const myGoal = Goal.action(Always, actionSpy);
@@ -299,27 +316,53 @@ describe('Goal', function () {
 			expect(await Goal.seek(otherGoal, { threshold: 5 })).to.be.true;
 			expect(actionSpy).to.not.have.been.called;
 		});
-	});
 
-	describe('Seeking combined goals', () => {
-		it('succeds if all the goals in the tuple are able to be met', async () => {
-			const g = Goal.of([Always, Always, Always]);
-			expect(await Goal.seek(g, 0)).to.be.true;
+		describe('Seeking operations', () => {
+			it('`and` fails at the first failure', async () => {
+				const g = Goal.and([Always, Never, Always]);
+				expect(await Goal.seek(g, 0)).to.be.false;
+
+				// TODO: how to check that the third goal is never called
+			});
+
+			it('`or` succeeds at the first success', async () => {
+				const g = Goal.or([Never, Always, Never]);
+				expect(await Goal.seek(g, 0)).to.be.true;
+
+				// TODO: how to check that the third goal is never called
+			});
+
+			it('`all` fails at the first failure', async () => {
+				const g = Goal.all([Always, Never, Always]);
+				expect(await Goal.seek(g, 0)).to.be.false;
+			});
+
+			it('`any` succeeds at the first success', async () => {
+				const g = Goal.any([Never, Always, Never]);
+				expect(await Goal.seek(g, 0)).to.be.true;
+			});
 		});
 
-		it('fails if any of the goals in the tuple not able to be met', async () => {
-			const g = Goal.of([Always, Never, Always]);
-			expect(await Goal.seek(g, 0)).to.be.false;
-		});
+		describe('Seeking combined goals', () => {
+			it('succeds if all the goals in the tuple are able to be met', async () => {
+				const g = Goal.of([Always, Always, Always]);
+				expect(await Goal.seek(g, 0)).to.be.true;
+			});
 
-		it('succeds if all the goals in the dict are able to be met', async () => {
-			const g = Goal.of({ one: Always, two: Always, three: Always });
-			expect(await Goal.seek(g, 0)).to.be.true;
-		});
+			it('fails if any of the goals in the tuple not able to be met', async () => {
+				const g = Goal.of([Always, Never, Always]);
+				expect(await Goal.seek(g, 0)).to.be.false;
+			});
 
-		it('fails if any the goals in the dict is not able to be met', async () => {
-			const g = Goal.of({ one: Always, two: Never, three: Always });
-			expect(await Goal.seek(g, 0)).to.be.false;
+			it('succeds if all the goals in the dict are able to be met', async () => {
+				const g = Goal.of({ one: Always, two: Always, three: Always });
+				expect(await Goal.seek(g, 0)).to.be.true;
+			});
+
+			it('fails if any the goals in the dict is not able to be met', async () => {
+				const g = Goal.of({ one: Always, two: Never, three: Always });
+				expect(await Goal.seek(g, 0)).to.be.false;
+			});
 		});
 	});
 });

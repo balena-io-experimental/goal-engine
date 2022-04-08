@@ -6,6 +6,9 @@ export type Test<TContext = any, TState = any> = (
 	s: TState,
 ) => boolean;
 
+export const isTest = (x: unknown): x is Test =>
+	x != null && typeof x === 'function';
+
 /**
  * Transform a test that receives a context A into a test that receives
  * a context B by applying a transformation function
@@ -156,6 +159,7 @@ export function of<
 }
 
 export const Test = {
+	is: isTest,
 	of,
 	map,
 	all,
