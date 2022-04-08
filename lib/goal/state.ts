@@ -7,6 +7,11 @@ export type State<TContext = any, TState = any> = (
 	c: TContext,
 ) => Promise<TState>;
 
+export const isState = (x: unknown): x is State =>
+	// TODO: figure out if there is a way to get the return type of the function to check
+	// if it is a promise, without actually calling the function
+	x != null && typeof x === 'function';
+
 /**
  * Transform a state that receives a context A into a state that receives
  * a context B by applying a transformation function
@@ -43,17 +48,20 @@ type TupleStates<
  * Combine an array of state objects into a state that returns a tuple of
  * results
  */
-const tuple =
+const fromTuple =
 	<
 		TContext = any,
 		TState = any,
 		TTuple extends Array<State<TContext>> = Array<State<TContext>>,
 	>(
 		states: [State<TContext, TState>, ...TTuple],
-	): State<TContext, [TState, ...TupleStates<TTuple, TContext>]> =>
+	): State<
+		TContext,
+		[State<TContext, TState>, ...TupleStates<TTuple, TContext>]
+	> =>
 	(c: TContext) =>
 		Promise.all(states.map((s) => s(c))) as Promise<
-			[TState, ...TupleStates<TTuple, TContext>]
+			[State<TContext, TState>, ...TupleStates<TTuple, TContext>]
 		>;
 
 /**
@@ -65,14 +73,8 @@ const tuple =
  * combinators from incompatible types, however such combinators are unusable as the type
  * signature won't match anything.
  */
-const dict =
-	<
-		TStateDict extends {
-			[K in keyof TState]: State<any, TState[K]>;
-		},
-		TContext extends DictionaryContext<TStateDict, TState>,
-		TState = any,
-	>(states: {
+const fromDict =
+	<TContext = any, TState = any>(states: {
 		[K in keyof TState]: State<TContext, TState[K]>;
 	}): State<TContext, { [K in keyof TState]: TState[K] }> =>
 	async (c: TContext) => {
@@ -126,11 +128,11 @@ export function of<
  * });
  */
 export function of<
-	TStateDict extends {
-		[K in keyof TState]: State<any, TState[K]>;
-	},
 	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
+	TStateDict extends {
+		[K in keyof TState]: State<any, TState[K]>;
+	} = { [K in keyof TState]: State<any, TState[K]> },
 >(
 	states: {
 		[K in keyof TState]: State<TContext, TState[K]>;
@@ -151,11 +153,11 @@ export function of<
 	TState = any,
 >(a: T) {
 	if (Array.isArray(a)) {
-		return tuple(a);
+		return fromTuple(a);
 	} else if (typeof a === 'function') {
 		return a;
 	} else {
-		return dict(
+		return fromDict(
 			a as {
 				[K in keyof TState]: State<any, TState[K]>;
 			},
@@ -165,7 +167,10 @@ export function of<
 
 export const State = {
 	of,
+	is: isState,
 	map,
+	fromDict,
+	fromTuple,
 };
 
 export default State;

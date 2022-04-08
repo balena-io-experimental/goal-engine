@@ -33,6 +33,30 @@ describe('Goal', function () {
 
 			const c = Goal.of([a, b]);
 			expect(await c.state(0)).to.deep.equal([10, 'Hello World']);
+			expect(c.test(0, [10, 'Hello world'])).to.be.true;
+		});
+
+		it('allows to combine goals as a dict', async () => {
+			const num = Goal.of({
+				state: (x: string) => Promise.resolve(x.length),
+				test: (_: string) => true,
+			});
+			const str = Goal.of({
+				state: (x: string) => Promise.resolve(`Hello ${x}`),
+				test: (_: string) => true,
+			});
+
+			const c = Goal.of({ number: num, string: str });
+			expect(await c.state('world')).to.deep.equal({
+				number: 5,
+				string: 'Hello world',
+			});
+			expect(
+				c.test('world', {
+					number: 5,
+					string: 'Hello world',
+				}),
+			).to.be.true;
 		});
 	});
 
@@ -278,13 +302,23 @@ describe('Goal', function () {
 	});
 
 	describe('Seeking combined goals', () => {
-		it('succeds if all the goals are able to be met', async () => {
+		it('succeds if all the goals in the tuple are able to be met', async () => {
 			const g = Goal.of([Always, Always, Always]);
 			expect(await Goal.seek(g, 0)).to.be.true;
 		});
 
-		it('fails if any of the goals not able to be met', async () => {
+		it('fails if any of the goals in the tuple not able to be met', async () => {
 			const g = Goal.of([Always, Never, Always]);
+			expect(await Goal.seek(g, 0)).to.be.false;
+		});
+
+		it('succeds if all the goals in the dict are able to be met', async () => {
+			const g = Goal.of({ one: Always, two: Always, three: Always });
+			expect(await Goal.seek(g, 0)).to.be.true;
+		});
+
+		it('fails if any the goals in the dict is not able to be met', async () => {
+			const g = Goal.of({ one: Always, two: Never, three: Always });
 			expect(await Goal.seek(g, 0)).to.be.false;
 		});
 	});

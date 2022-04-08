@@ -42,13 +42,7 @@ type DictionaryContext<
  * Combine a dict of test objects into a test that returns true if all
  * tests succeed
  */
-function allInDict<
-	TStateDict extends {
-		[K in keyof TState]: Test<any, TState[K]>;
-	},
-	TContext extends DictionaryContext<TStateDict, TState>,
-	TState = any,
->(tests: {
+function fromDict<TContext = any, TState = any>(tests: {
 	[K in keyof TState]: Test<TContext, TState[K]>;
 }): Test<TContext, { [K in keyof TState]: TState[K] }> {
 	return (c: TContext, s: { [K in keyof TState]: TState[K] }) =>
@@ -59,7 +53,7 @@ function allInDict<
  * Combine an array of test objects into a test that returns true if all
  * tests succeed
  */
-function allInTuple<
+function fromTuple<
 	TContext = any,
 	TState = any,
 	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
@@ -87,11 +81,13 @@ export function all<
  * tests succeed
  */
 export function all<
-	TStateDict extends {
-		[K in keyof TState]: Test<any, TState[K]>;
-	},
 	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
+	TStateDict extends {
+		[K in keyof TState]: Test<any, TState[K]>;
+	} = {
+		[K in keyof TState]: Test<any, TState[K]>;
+	},
 >(
 	tests: {
 		[K in keyof TState]: Test<TContext, TState[K]>;
@@ -105,88 +101,10 @@ export function all<
 	TState = any,
 >(tests: T) {
 	if (Array.isArray(tests)) {
-		return allInTuple(tests);
+		return fromTuple(tests);
 	} else {
 		// The alternative is a dict
-		return allInDict(
-			tests as {
-				[K in keyof TState]: Test<any, TState[K]>;
-			},
-		);
-	}
-}
-
-/**
- * Combine an array of test objects into a test that returns true if
- * any of the tests succeed
- */
-function anyInTuple<
-	TContext = any,
-	TState = any,
-	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
->(
-	tests: [Test<TContext, TState>, ...TTuple],
-): Test<TContext, [TState, ...TupleStates<TTuple, TContext>]> {
-	return (c: TContext, s: [TState, ...TupleStates<TTuple, TContext>]) =>
-		// The test will fail if there are any false results
-		tests.filter((t, i) => t(c, s[i])).length > 0;
-}
-
-/**
- * Combine a dict of test objects into a test that returns true if
- * any of the tests succeed
- */
-function anyInDict<
-	TStateDict extends {
-		[K in keyof TState]: Test<any, TState[K]>;
-	},
-	TContext extends DictionaryContext<TStateDict, TState>,
-	TState = any,
->(tests: {
-	[K in keyof TState]: Test<TContext, TState[K]>;
-}): Test<TContext, { [K in keyof TState]: TState[K] }> {
-	return (c: TContext, s: { [K in keyof TState]: TState[K] }) =>
-		keys(tests).filter((k) => tests[k](c, s[k])).length > 0;
-}
-
-/**
- * Combine an array of test objects into a test that returns true if
- * any of the tests succeed
- */
-export function any<
-	TContext = any,
-	TState = any,
-	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
->(
-	tests: [Test<TContext, TState>, ...TTuple],
-): Test<TContext, [TState, ...TupleStates<TTuple, TContext>]>;
-/**
- * Combine a dict of test objects into a test that returns true if
- * any of the tests succeed
- */
-export function any<
-	TStateDict extends {
-		[K in keyof TState]: Test<any, TState[K]>;
-	},
-	TContext extends DictionaryContext<TStateDict, TState>,
-	TState = any,
->(
-	tests: {
-		[K in keyof TState]: Test<TContext, TState[K]>;
-	} & TStateDict,
-): Test<TContext, { [K in keyof TState]: TState[K] }>;
-export function any<
-	T extends
-		| { [K in keyof TState]: Test<TContext, TState[K]> }
-		| [Test<TContext, TState>, ...Array<Test<TContext>>],
-	TContext = any,
-	TState = any,
->(tests: T) {
-	if (Array.isArray(tests)) {
-		return anyInTuple(tests);
-	} else {
-		// The alternative is a dict
-		return anyInDict(
+		return fromDict(
 			tests as {
 				[K in keyof TState]: Test<any, TState[K]>;
 			},
@@ -224,12 +142,12 @@ export function of<
 	TState = any,
 >(t: T) {
 	if (Array.isArray(t)) {
-		return allInTuple(t);
+		return fromTuple(t);
 	} else if (typeof t === 'function') {
 		return t;
 	} else {
 		// The alternative is a dict
-		return allInDict(
+		return fromDict(
 			t as {
 				[K in keyof TState]: Test<any, TState[K]>;
 			},
@@ -241,7 +159,7 @@ export const Test = {
 	of,
 	map,
 	all,
-	any,
+	fromDict,
 };
 
 export default Test;

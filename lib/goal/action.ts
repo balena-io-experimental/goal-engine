@@ -32,7 +32,7 @@ type TupleStates<
  * Combine an array of action objects into an action that operates on a tuple
  * or states
  */
-const tuple =
+const fromTuple =
 	<
 		TContext = any,
 		TState = any,
@@ -64,14 +64,8 @@ type DictionaryContext<
  * combinators from incompatible types, however such combinators are unusable as the type
  * signature won't match anything.
  */
-const dict =
-	<
-		TStateDict extends {
-			[K in keyof TState]: Action<any, TState[K]>;
-		},
-		TContext extends DictionaryContext<TStateDict, TState>,
-		TState = any,
-	>(actions: {
+const fromDict =
+	<TContext = any, TState = any>(actions: {
 		[K in keyof TState]: Action<TContext, TState[K]>;
 	}): Action<TContext, { [K in keyof TState]: TState[K] }> =>
 	async (c: TContext, s: { [K in keyof TState]: TState[K] }) => {
@@ -106,11 +100,13 @@ export function of<
  * signature won't match anything.
  */
 export function of<
-	TStateDict extends {
-		[K in keyof TState]: Action<any, TState[K]>;
-	},
 	TContext extends DictionaryContext<TStateDict, TState>,
 	TState = any,
+	TStateDict extends {
+		[K in keyof TState]: Action<any, TState[K]>;
+	} = {
+		[K in keyof TState]: Action<any, TState[K]>;
+	},
 >(
 	actions: {
 		[K in keyof TState]: Action<TContext, TState[K]>;
@@ -131,11 +127,11 @@ export function of<
 	TState = any,
 >(a: T) {
 	if (Array.isArray(a)) {
-		return tuple(a);
+		return fromTuple(a);
 	} else if (typeof a === 'function') {
 		return a;
 	} else {
-		return dict(
+		return fromDict(
 			a as {
 				[K in keyof TState]: Action<any, TState[K]>;
 			},
@@ -147,6 +143,7 @@ export function of<
 export const Action = {
 	of,
 	map,
+	fromDict,
 };
 
 export default Action;
