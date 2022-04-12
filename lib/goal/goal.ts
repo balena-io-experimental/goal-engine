@@ -102,12 +102,28 @@ export const isOperation = (x: unknown): x is Operation =>
 	Array.isArray((x as Operation).links);
 
 /**
+ * A combination is an operation that can also be queried for state and tested, however
+ * during evaluation it is evaluated as any other operation.
+ *
+ * Examples of operations are the results of fromDict and fromTuple
+ */
+export type Combination<TContext = any, TState = any> = Assertion<
+	TContext,
+	TState
+> &
+	Operation<TContext>;
+
+export const isCombination = (x: unknown): x is Combination =>
+	isAssertion(x) && isOperation(x);
+
+/**
  * A link describes a connection between two or more goals or a goal and a precondition
  */
 type Link<TContext = any, TState = any> =
 	| Assertion<TContext, TState>
 	| Seekable<TContext, TState>
-	| Operation<TContext>;
+	| Operation<TContext>
+	| Combination<TContext, TState>;
 
 // Utility type to make some properties of a type optional
 type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
@@ -117,7 +133,7 @@ type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
  * it is the recommended way to interact with the library.
  */
 export interface Goal<TContext = any, TState = any>
-	extends Seekable<TContext, TState> {
+	extends Assertion<TContext, TState> {
 	/**
 	 * Transform the current goal a context A into a goal/link that receives
 	 * a context B by applying a transformation function
@@ -192,12 +208,12 @@ function fromSeekable<TContext = any, TState = any>({
 /**
  * Utility type to infer the combined state type of a tuple of seekable objects
  */
-type StatesFromSeekableTuple<
-	T extends Array<Seekable<TContext>>,
+type StatesFromAssertionTuple<
+	T extends Array<Assertion<TContext>>,
 	TContext = any,
-> = T extends [Seekable<TContext, infer TState>, ...infer TTail]
-	? TTail extends Array<Seekable<TContext>>
-		? [TState, ...StatesFromSeekableTuple<TTail, TContext>]
+> = T extends [Assertion<TContext, infer TState>, ...infer TTail]
+	? TTail extends Array<Assertion<TContext>>
+		? [TState, ...StatesFromAssertionTuple<TTail, TContext>]
 		: [TState]
 	: [];
 
@@ -212,28 +228,22 @@ type StatesFromSeekableTuple<
  */
 const fromTuple = <
 	TContext = any,
-	TTuple extends Array<Seekable<TContext>> = Array<Seekable<TContext>>,
+	TTuple extends Array<Assertion<TContext>> = Array<Assertion<TContext>>,
 >(
 	goals: TTuple,
-): Goal<TContext, StatesFromSeekableTuple<TTuple, TContext>> => {
-	const bgoals = goals.map((g) => g.before).filter((g) => !!g) as Array<
-		Seekable<TContext>
-	>;
-	const agoals = goals.map((g) => g.after).filter((g) => !!g) as Array<
-		Seekable<TContext>
-	>;
-	return fromSeekable({
-		state: State.of(goals.map((g) => g.state)) as State<
-			TContext,
-			StatesFromSeekableTuple<TTuple, TContext>
-		>,
-		test: Test.all(goals.map((g) => g.test)),
-		action: Action.of(goals.map((g) => g.action)),
-
-		// Only add before/after goals if any to avoid infinite recursion
-		...(bgoals.length > 0 && { before: fromTuple(bgoals) }),
-		...(agoals.length > 0 && { before: fromTuple(agoals) }),
-	});
+): Goal<TContext, StatesFromAssertionTuple<TTuple, TContext>> &
+	Operation<TContext> => {
+	return {
+		op: 'all',
+		links: goals,
+		...fromSeekable({
+			state: State.of(goals.map((g) => g.state)) as State<
+				TContext,
+				StatesFromAssertionTuple<TTuple, TContext>
+			>,
+			test: Test.all(goals.map((g) => g.test)),
+		}),
+	};
 };
 
 /**
@@ -242,11 +252,11 @@ const fromTuple = <
  * dictionary have the same context.
  * Other it will return invalid types like `number & string`
  */
-type ContextFromSeekableDict<
-	T extends { [K in keyof TState]: Seekable<any, TState[K]> },
+type ContextFromAssertionDict<
+	T extends { [K in keyof TState]: Assertion<any, TState[K]> },
 	TState = any,
 > = T extends {
-	[K in keyof TState]: Seekable<infer TContext, TState[K]>;
+	[K in keyof TState]: Assertion<infer TContext, TState[K]>;
 }
 	? TContext
 	: never;
@@ -267,46 +277,34 @@ type ContextFromSeekableDict<
  * @returns a combined goal operates on the combined dictionary of states
  */
 const fromDict = <
-	TContext extends ContextFromSeekableDict<TStateDict, TState> = any,
+	TContext extends ContextFromAssertionDict<TStateDict, TState> = any,
 	TState = any,
 	TStateDict extends {
-		[K in keyof TState]: Seekable<any, TState[K]>;
+		[K in keyof TState]: Assertion<any, TState[K]>;
 	} = {
-		[K in keyof TState]: Seekable<any, TState[K]>;
+		[K in keyof TState]: Assertion<any, TState[K]>;
 	},
 >(
 	goals: TStateDict,
-): Goal<TContext, TState> => {
-	const bgoals = values(goals)
-		.map((g) => g.before)
-		.filter((g) => !!g) as Array<Seekable<TContext>>;
-	const agoals = values(goals)
-		.map((g) => g.after)
-		.filter((g) => !!g) as Array<Seekable<TContext>>;
-	return fromSeekable({
-		state: State.fromDict(
-			keys(goals).reduce(
-				(states, key) => ({ ...states, [key]: goals[key].state }),
-				{} as { [K in keyof TState]: State<TContext, TState[K]> },
+): Goal<TContext, TState> & Operation<TContext> => {
+	return {
+		op: 'all',
+		links: values(goals),
+		...fromSeekable({
+			state: State.fromDict(
+				keys(goals).reduce(
+					(states, key) => ({ ...states, [key]: goals[key].state }),
+					{} as { [K in keyof TState]: State<TContext, TState[K]> },
+				),
 			),
-		),
-		test: Test.fromDict(
-			keys(goals).reduce(
-				(tests, key) => ({ ...tests, [key]: goals[key].test }),
-				{} as { [K in keyof TState]: Test<TContext, TState[K]> },
+			test: Test.fromDict(
+				keys(goals).reduce(
+					(tests, key) => ({ ...tests, [key]: goals[key].test }),
+					{} as { [K in keyof TState]: Test<TContext, TState[K]> },
+				),
 			),
-		),
-		action: Action.fromDict(
-			keys(goals).reduce(
-				(actions, key) => ({ ...actions, [key]: goals[key].action }),
-				{} as { [K in keyof TState]: Action<TContext, TState[K]> },
-			),
-		),
-
-		// Before and after goals don't need to be a dictionary
-		...(bgoals.length > 0 && { before: fromTuple(bgoals) }),
-		...(agoals.length > 0 && { before: fromTuple(agoals) }),
-	});
+		}),
+	};
 };
 
 /**
@@ -325,6 +323,7 @@ export function of<TContext = any>({
 	Seekable<TContext, boolean>,
 	'test' | 'action' | 'before' | 'after'
 >): Goal<TContext, boolean>;
+
 export function of<TContext = any, TState = any>({
 	state,
 	test,
@@ -345,10 +344,10 @@ export function of<TContext = any, TState = any>({
 export function of<
 	TContext = any,
 	TState = any,
-	TTuple extends Array<Seekable<TContext>> = Array<Seekable<TContext>>,
+	TTuple extends Array<Assertion<TContext>> = Array<Assertion<TContext>>,
 >(
-	goals: [Seekable<TContext, TState>, ...TTuple],
-): Goal<TContext, [TState, ...StatesFromSeekableTuple<TTuple, TContext>]>;
+	goals: [Assertion<TContext, TState>, ...TTuple],
+): Goal<TContext, [TState, ...StatesFromAssertionTuple<TTuple, TContext>]>;
 /**
  * Combine a dictionary of seekable objects into a goal that operates on a dictionary of results as state*
  *
@@ -365,14 +364,14 @@ export function of<
  * @returns a combined goal operates on the combined dictionary of states
  */
 export function of<
-	TContext extends ContextFromSeekableDict<TStateDict, TState>,
+	TContext extends ContextFromAssertionDict<TStateDict, TState>,
 	TState = any,
 	TStateDict extends {
-		[K in keyof TState]: Seekable<any, TState[K]>;
-	} = { [K in keyof TState]: Seekable<any, TState[K]> },
+		[K in keyof TState]: Assertion<any, TState[K]>;
+	} = { [K in keyof TState]: Assertion<any, TState[K]> },
 >(
 	goals: {
-		[K in keyof TState]: Seekable<TContext, TState[K]>;
+		[K in keyof TState]: Assertion<TContext, TState[K]>;
 	} & TStateDict,
 ): Goal<TContext, { [K in keyof TState]: TState[K] }>;
 
@@ -383,15 +382,17 @@ export function of<TContext = any, TState = any>(
 				Seekable<TContext, TState>,
 				'test' | 'action' | 'before' | 'after'
 		  >
-		| [Seekable<TContext>, ...Array<Seekable<TContext>>]
-		| { [K in keyof TState]: Seekable<TContext, TState[K]> },
+		| [Assertion<TContext>, ...Array<Assertion<TContext>>]
+		| { [K in keyof TState]: Assertion<TContext, TState[K]> },
 ) {
 	if (Array.isArray(input)) {
 		return fromTuple(input);
 	} else if ('state' in input && State.is(input.state)) {
 		return fromSeekable(input);
 	} else {
-		return fromDict(input as { [K in keyof TState]: Seekable<any, TState[K]> });
+		return fromDict(
+			input as { [K in keyof TState]: Assertion<any, TState[K]> },
+		);
 	}
 }
 
@@ -412,7 +413,7 @@ export function of<TContext = any, TState = any>(
  * @param f - transformation function
  */
 export function map<TContext = any, TState = any, TInputContext = any>(
-	g: Seekable<TContext, TState>,
+	g: Assertion<TContext, TState>,
 	f: (c: TInputContext) => TContext,
 ): Goal<TInputContext, TState>;
 export function map<TContext = any, TState = any, TInputContext = any>(
@@ -423,6 +424,18 @@ export function map<TContext = any, TState = any, TInputContext = any>(
 	g: Link<TContext, TState>,
 	f: (c: TInputContext) => TContext,
 ): Goal<TInputContext, TState> | Link<TInputContext, TState> {
+	// Combinatios and operations fall here
+	if (isOperation(g)) {
+		return {
+			...g,
+			...(isAssertion(g) && {
+				state: State.map(g.state, f),
+				test: Test.map(g.test, f),
+			}),
+			links: g.links.map((l) => map(l, f)),
+		};
+	}
+
 	if (isAssertion(g)) {
 		return of({
 			state: State.map(g.state, f),
@@ -436,8 +449,6 @@ export function map<TContext = any, TState = any, TInputContext = any>(
 				...(g.after && { after: map(g.after, f) }),
 			}),
 		});
-	} else if (isOperation(g)) {
-		return { ...g, links: g.links.map((l) => map(l, f)) };
 	}
 
 	// Should never be callsed
@@ -462,37 +473,8 @@ export async function seek<TContext = any, TState = any>(
 	goal: Link<TContext, TState>,
 	ctx: TContext,
 ): Promise<boolean> {
-	if (isAssertion(goal)) {
-		const s = await goal.state(ctx);
-		if (goal.test(ctx, s)) {
-			// The goal has been met
-			return true;
-		}
-
-		if (isSeekable(goal)) {
-			// Check if pre-conditions are met
-			if (!!goal.before && !(await seek(goal.before, ctx))) {
-				// Cannot try the goal action since some preconditions are not met
-				return false;
-			}
-
-			// Run the action
-			await goal.action(ctx, s);
-
-			// Get the state again and run the test with the
-			// new state. If the state could not be met, something
-			// failed (reason is unknown at this point)
-			if (!goal.test(ctx, await goal.state(ctx))) {
-				return false;
-			}
-
-			// The goal is achieved if the postconditions are met.
-			return !goal.after || seek(goal.after, ctx);
-		}
-
-		// If we get here, then the test failed
-		return false;
-	} else if (isOperation(goal)) {
+	// Evaluate operations and combinations first
+	if (isOperation(goal)) {
 		switch (goal.op) {
 			case 'and':
 				return goal.links.reduce(
@@ -524,11 +506,37 @@ export async function seek<TContext = any, TState = any>(
 		}
 	}
 
-	// Should never be reached
-	throw new AssertionError({
-		message: 'Expected first parameter to be a goal or an operation',
-		actual: goal,
-	});
+	if (isAssertion(goal)) {
+		const s = await goal.state(ctx);
+		if (goal.test(ctx, s)) {
+			// The goal has been met
+			return true;
+		}
+
+		if (isSeekable(goal)) {
+			// Check if pre-conditions are met
+			if (!!goal.before && !(await seek(goal.before, ctx))) {
+				// Cannot try the goal action since some preconditions are not met
+				return false;
+			}
+
+			// Run the action
+			await goal.action(ctx, s);
+
+			// Get the state again and run the test with the
+			// new state. If the state could not be met, something
+			// failed (reason is unknown at this point)
+			if (!goal.test(ctx, await goal.state(ctx))) {
+				return false;
+			}
+
+			// The goal is achieved if the postconditions are met.
+			return !goal.after || seek(goal.after, ctx);
+		}
+	}
+
+	// If we get here, then the test failed
+	return false;
 }
 
 /**
@@ -586,7 +594,7 @@ function any<TContext = any>(
  * since it will effectively change the way the goal is evaluated.
  */
 export const action = <TContext = any, TState = any>(
-	goal: Seekable<TContext, TState>,
+	goal: Assertion<TContext, TState>,
 	_action: Action<TContext, TState>,
 ): Goal<TContext, TState> => {
 	return of({ ...goal, action: _action });
@@ -599,8 +607,8 @@ export const action = <TContext = any, TState = any>(
  * since it will effectively change the way the goal is evaluated.
  */
 export const before = <TContext = any, TState = any>(
-	goal: Seekable<TContext, TState>,
-	_before: Seekable<TContext>,
+	goal: Assertion<TContext, TState>,
+	_before: Link<TContext>,
 ): Goal<TContext, TState> => {
 	return of({ ...goal, before: _before });
 };
@@ -612,8 +620,8 @@ export const before = <TContext = any, TState = any>(
  * since it will effectively change the way the goal is evaluated.
  */
 export const after = <TContext = any, TState = any>(
-	goal: Seekable<TContext, TState>,
-	_after: Seekable<TContext>,
+	goal: Assertion<TContext, TState>,
+	_after: Link<TContext>,
 ): Goal<TContext, TState> => {
 	return of({ ...goal, after: _after });
 };

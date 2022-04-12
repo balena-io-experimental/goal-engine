@@ -9,13 +9,49 @@ describe('Goal', function () {
 			const LessThan256Chars = Goal.of({
 				state: (x: number) => Promise.resolve(x <= 255),
 			});
-			const StringIsLessThan256Chars = Goal.map(
-				LessThan256Chars,
+			const StringIsLessThan256Chars = LessThan256Chars.map(
 				(x: string) => x.length,
 			);
 
-			expect(await StringIsLessThan256Chars.seek('hello')).to.be.true;
+			expect(await Goal.seek(StringIsLessThan256Chars, 'hello')).to.be.true;
 			expect(await StringIsLessThan256Chars.seek('a'.repeat(256))).to.be.false;
+		});
+
+		it('creates a goal with a different context type from an input tuple', async () => {
+			const LessThan256Chars = Goal.of({
+				state: (x: number) => Promise.resolve(x <= 255),
+			});
+			const combined = Goal.of([LessThan256Chars, LessThan256Chars]);
+
+			const TupleElementsAreLessThan256Chars = combined.map(
+				(x: string) => x.length,
+			);
+
+			expect(await Goal.seek(TupleElementsAreLessThan256Chars, 'hello')).to.be
+				.true;
+			expect(await TupleElementsAreLessThan256Chars.seek('a'.repeat(256))).to.be
+				.false;
+		});
+
+		it('creates a goal with a different context type from an input dict', async () => {
+			const LessThan256Chars = Goal.of({
+				state: (x: number) => Promise.resolve(x <= 255),
+			});
+
+			// Not a super useful combinator. It's meant to just test the map
+			const combined = Goal.of({
+				one: LessThan256Chars,
+				two: LessThan256Chars,
+			});
+
+			const DictElementsAreLessThan256Chars = combined.map(
+				(x: string) => x.length,
+			);
+
+			expect(await Goal.seek(DictElementsAreLessThan256Chars, 'hello')).to.be
+				.true;
+			expect(await DictElementsAreLessThan256Chars.seek('a'.repeat(256))).to.be
+				.false;
 		});
 	});
 
@@ -319,27 +355,32 @@ describe('Goal', function () {
 
 		describe('Seeking operations', () => {
 			it('`and` fails at the first failure', async () => {
-				const g = Goal.and([Always, Never, Always]);
-				expect(await Goal.seek(g, 0)).to.be.false;
+				const state = sinon.stub().resolves(true);
 
-				// TODO: how to check that the third goal is never called
+				const g = Goal.and([Always, Never, Goal.of({ state })]);
+				expect(await Goal.seek(g, 0)).to.be.false;
+				expect(state).to.not.have.been.called;
 			});
 
 			it('`or` succeeds at the first success', async () => {
-				const g = Goal.or([Never, Always, Never]);
+				const state = sinon.stub().resolves(false);
+				const g = Goal.or([Never, Always, Goal.of({ state })]);
 				expect(await Goal.seek(g, 0)).to.be.true;
-
-				// TODO: how to check that the third goal is never called
+				expect(state).to.not.have.been.called;
 			});
 
 			it('`all` fails at the first failure', async () => {
-				const g = Goal.all([Always, Never, Always]);
+				const state = sinon.stub().resolves(true);
+				const g = Goal.all([Always, Never, Goal.of({ state })]);
 				expect(await Goal.seek(g, 0)).to.be.false;
+				expect(state).to.have.been.called;
 			});
 
 			it('`any` succeeds at the first success', async () => {
-				const g = Goal.any([Never, Always, Never]);
+				const state = sinon.stub().resolves(false);
+				const g = Goal.any([Never, Always, Goal.of({ state })]);
 				expect(await Goal.seek(g, 0)).to.be.true;
+				expect(state).to.have.been.called;
 			});
 		});
 
@@ -354,6 +395,35 @@ describe('Goal', function () {
 				expect(await Goal.seek(g, 0)).to.be.false;
 			});
 
+			it('succeeds if calling the actions in the tuple causes the goal to be met', async () => {
+				type S = { count: number };
+
+				const state: S = { count: 5 };
+
+				const greaterThan = Goal.of({
+					state: () => Promise.resolve(state),
+					test: ({ min }: { min: number }, s) => s.count > min,
+					action: () => {
+						// Update the state
+						state.count++;
+						return Promise.resolve();
+					},
+				});
+
+				const lowerThan = Goal.of({
+					state: () => Promise.resolve(state),
+					test: ({ max }: { max: number }, s) => s.count < max,
+				});
+
+				const combined = Goal.of([greaterThan, lowerThan]);
+
+				expect(await Goal.seek(combined, { min: 5, max: 8 })).to.be.true;
+				expect(state.count).to.equal(6);
+				expect(await Goal.seek(combined, { min: 5, max: 6 })).to.be.false;
+				// The action for the first goal only should be called once
+				expect(state.count).to.equal(6);
+			});
+
 			it('succeds if all the goals in the dict are able to be met', async () => {
 				const g = Goal.of({ one: Always, two: Always, three: Always });
 				expect(await Goal.seek(g, 0)).to.be.true;
@@ -362,6 +432,35 @@ describe('Goal', function () {
 			it('fails if any the goals in the dict is not able to be met', async () => {
 				const g = Goal.of({ one: Always, two: Never, three: Always });
 				expect(await Goal.seek(g, 0)).to.be.false;
+			});
+
+			it('succeeds if calling the actions in the dict causes the goal to be met', async () => {
+				type S = { count: number };
+
+				const state: S = { count: 5 };
+
+				const greaterThan = Goal.of({
+					state: () => Promise.resolve(state),
+					test: ({ min }: { min: number }, s) => s.count > min,
+					action: () => {
+						// Update the state
+						state.count++;
+						return Promise.resolve();
+					},
+				});
+
+				const lowerThan = Goal.of({
+					state: () => Promise.resolve(state),
+					test: ({ max }: { max: number }, s) => s.count < max,
+				});
+
+				const combined = Goal.of({ greaterThan, lowerThan });
+
+				expect(await Goal.seek(combined, { min: 5, max: 8 })).to.be.true;
+				expect(state.count).to.equal(6);
+				expect(await Goal.seek(combined, { min: 5, max: 6 })).to.be.false;
+				// The action for the first goal only should be called once
+				expect(state.count).to.equal(6);
 			});
 		});
 	});
