@@ -179,9 +179,9 @@ export interface Goal<TContext = any, TState = any>
 function fromSeekable<TContext = any, TState = any>({
 	state,
 	test: _test = (_: TContext, s: TState) => !!s,
-	action: _action = () => Promise.resolve(void 0),
-	before: _before = Always,
-	after: _after = Always,
+	action: _action,
+	before: _before,
+	after: _after,
 }: WithOptional<
 	Seekable<TContext, TState>,
 	'test' | 'action' | 'before' | 'after'
@@ -189,9 +189,13 @@ function fromSeekable<TContext = any, TState = any>({
 	const goal = {
 		state,
 		test: _test,
-		action: _action,
-		before: _before,
-		after: _after,
+		// Only add the seekable fields if one
+		// of the following is defined
+		...((_action || _before || _after) && {
+			action: _action || (() => Promise.resolve(void 0)),
+			before: _before || Always,
+			after: _after || Always,
+		}),
 		map<TInputContext>(
 			f: (c: TInputContext) => TContext,
 		): Goal<TInputContext, TState> {
