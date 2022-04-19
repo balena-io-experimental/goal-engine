@@ -500,7 +500,12 @@ export async function seek<TContext = any, TState = any>(
 					).length === 0
 				);
 			case 'any':
-				return Promise.any(goal.links.map((link) => seek(link, ctx)));
+				return (
+					// At least one of the goals need to be fulfilled and return true
+					(
+						await Promise.allSettled(goal.links.map((link) => seek(link, ctx)))
+					).filter((r) => r.status === 'fulfilled' && r.value).length > 0
+				);
 			default:
 				return false;
 		}
