@@ -2,6 +2,7 @@ import { expect } from '~/tests';
 
 import { Goal, Always, Never } from './goal';
 import * as sinon from 'sinon';
+import { TestFailure } from './test';
 
 describe('Goal', function () {
 	describe('map', () => {
@@ -141,6 +142,35 @@ describe('Goal', function () {
 
 			// Now the goal succeeds
 			expect(await Goal.seek(myGoal, { threshold: 5 })).to.be.true;
+		});
+
+		it('fails if getting the state throws a TestFailure and modifying state fails', async () => {
+			const action = sinon.spy();
+			const myGoal = Goal.of({
+				state: () =>
+					Promise.reject(
+						new TestFailure(
+							'could not get the state but this should be considered a test failure',
+						),
+					),
+				action,
+			});
+
+			expect(await Goal.seek(myGoal, null)).to.be.false;
+			expect(action).to.have.been.called;
+		});
+
+		it('fails if getting the state throws a TestFailure and there is no way to modify the state', async () => {
+			const myGoal = Goal.of({
+				state: () =>
+					Promise.reject(
+						new TestFailure(
+							'could not get the state but this should be considered a test failure',
+						),
+					),
+			});
+
+			expect(await Goal.seek(myGoal, null)).to.be.false;
 		});
 
 		it('calls the action to change the state if the goal has not been met yet', async () => {
@@ -354,7 +384,7 @@ describe('Goal', function () {
 		});
 
 		describe('Seeking operations', () => {
-			it('`and` fails at the first failure', async () => {
+			it('and: fails at the first failure', async () => {
 				const state = sinon.stub().resolves(true);
 
 				const g = Goal.and([Always, Never, Goal.of({ state })]);
@@ -362,21 +392,21 @@ describe('Goal', function () {
 				expect(state).to.not.have.been.called;
 			});
 
-			it('`or` succeeds at the first success', async () => {
+			it('or: succeeds at the first success', async () => {
 				const state = sinon.stub().resolves(false);
 				const g = Goal.or([Never, Always, Goal.of({ state })]);
 				expect(await Goal.seek(g, 0)).to.be.true;
 				expect(state).to.not.have.been.called;
 			});
 
-			it('`all` fails at the first failure', async () => {
+			it('all: fails at the first failure', async () => {
 				const state = sinon.stub().resolves(true);
 				const g = Goal.all([Always, Never, Goal.of({ state })]);
 				expect(await Goal.seek(g, 0)).to.be.false;
 				expect(state).to.have.been.called;
 			});
 
-			it('`any` succeeds at the first success', async () => {
+			it('any: succeeds at the first success', async () => {
 				const state = sinon.stub().resolves(false);
 				const g = Goal.any([Never, Always, Goal.of({ state })]);
 				expect(await Goal.seek(g, 0)).to.be.true;

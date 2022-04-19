@@ -2,7 +2,7 @@
 // context and some current state
 export type Action<TContext = any, TState = any> = (
 	c: TContext,
-	s: TState,
+	s?: TState,
 ) => Promise<unknown>;
 
 export const isAction = (x: unknown): x is Action =>
@@ -17,7 +17,7 @@ export const map =
 		a: Action<TContext, TState>,
 		f: (c: TOtherContext) => TContext,
 	): Action<TOtherContext, TState> =>
-	(c: TOtherContext, s: TState) =>
+	(c: TOtherContext, s?: TState) =>
 		a(f(c), s);
 
 /**

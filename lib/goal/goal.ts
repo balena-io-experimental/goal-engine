@@ -1,7 +1,7 @@
 import { AssertionError } from 'assert';
 
 import { State } from './state';
-import { Test } from './test';
+import { Test, TestFailure } from './test';
 import { Action } from './action';
 import { keys, values } from './utils';
 
@@ -516,8 +516,20 @@ export async function seek<TContext = any, TState = any>(
 	}
 
 	if (isAssertion(goal)) {
-		const s = await goal.state(ctx);
-		if (goal.test(ctx, s)) {
+		const getTestResultAndState = (c: TContext) =>
+			goal
+				.state(c)
+				.then((s) => [goal.test(c, s), s])
+				.catch((e) => {
+					if (e instanceof TestFailure) {
+						return [false, undefined];
+					}
+					throw e;
+				});
+
+		const [isMet, state] = await getTestResultAndState(ctx);
+
+		if (isMet) {
 			// The goal has been met
 			return true;
 		}
@@ -530,12 +542,13 @@ export async function seek<TContext = any, TState = any>(
 			}
 
 			// Run the action
-			await goal.action(ctx, s);
+			await goal.action(ctx, state);
 
 			// Get the state again and run the test with the
 			// new state. If the state could not be met, something
 			// failed (reason is unknown at this point)
-			if (!goal.test(ctx, await goal.state(ctx))) {
+			const [isMetAfterAction] = await getTestResultAndState(ctx);
+			if (!isMetAfterAction) {
 				return false;
 			}
 
