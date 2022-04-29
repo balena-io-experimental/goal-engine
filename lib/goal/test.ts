@@ -9,18 +9,6 @@ export type Test<TContext = any, TState = any> = (
 export const isTest = (x: unknown): x is Test =>
 	x != null && typeof x === 'function';
 
-// State functions can throw this exception to indicate that
-// failure to get the state should be considered
-// a test failure and hence trigger an action
-export class TestFailure extends Error {
-	constructor(message?: string, cause?: Error) {
-		// @ts-ignore this is not yet supported on typescript
-		// 4.5.5 but is available in Node 16.
-		// TODO: remove this when typescript adds supported
-		super(message, { cause });
-	}
-}
-
 /**
  * Transform a test that receives a context A into a test that receives
  * a context B by applying a transformation function

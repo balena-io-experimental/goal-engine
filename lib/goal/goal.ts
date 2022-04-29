@@ -1,7 +1,7 @@
 import { AssertionError } from 'assert';
 
-import { State } from './state';
-import { Test, TestFailure } from './test';
+import { State, StateNotFound } from './state';
+import { Test } from './test';
 import { Action } from './action';
 import { keys, values } from './utils';
 
@@ -128,6 +128,20 @@ type Link<TContext = any, TState = any> =
 // Utility type to make some properties of a type optional
 type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
+// A description returns a proper description for a goal given the
+// input context
+export type Description<TContext = any> = (ctx: TContext) => string;
+
+export interface Described<TContext = any> {
+	description: Description<TContext>;
+}
+
+export const isDescribed = (x: unknown): x is Described =>
+	x != null &&
+	typeof x === 'object' &&
+	x.hasOwnProperty('description') &&
+	typeof (x as any).description === 'function';
+
 /**
  * A goal extends the Seekable interface with utility methods,
  * it is the recommended way to interact with the library.
@@ -182,6 +196,7 @@ function fromSeekable<TContext = any, TState = any>({
 	action: _action,
 	before: _before,
 	after: _after,
+	...extra
 }: WithOptional<
 	Seekable<TContext, TState>,
 	'test' | 'action' | 'before' | 'after'
@@ -193,9 +208,10 @@ function fromSeekable<TContext = any, TState = any>({
 		// of the following is defined
 		...((_action || _before || _after) && {
 			action: _action || (() => Promise.resolve(void 0)),
-			before: _before || Always,
-			after: _after || Always,
+			...(_before && { before: _before }),
+			...(_after && { after: _after }),
 		}),
+		...extra,
 		map<TInputContext>(
 			f: (c: TInputContext) => TContext,
 		): Goal<TInputContext, TState> {
@@ -324,16 +340,15 @@ const fromDict = <
 export function of<TContext = any>({
 	state,
 }: WithOptional<
-	Seekable<TContext, boolean>,
-	'test' | 'action' | 'before' | 'after'
+	Seekable<TContext, boolean> & Described<TContext>,
+	'test' | 'action' | 'before' | 'after' | 'description'
 >): Goal<TContext, boolean>;
-
 export function of<TContext = any, TState = any>({
 	state,
 	test,
 }: WithOptional<
-	Seekable<TContext, TState>,
-	'action' | 'before' | 'after'
+	Seekable<TContext, TState> & Described<TContext>,
+	'action' | 'before' | 'after' | 'description'
 >): Goal<TContext, TState>;
 /**
  * Combine an array of state objects into a state that returns a tuple of
@@ -447,8 +462,6 @@ export function map<TContext = any, TState = any, TInputContext = any>(
 
 			...(isSeekable(g) && {
 				action: Action.map(g.action, f),
-
-				// Only add the before and after goals if they exist
 				...(g.before && { before: map(g.before, f) }),
 				...(g.after && { after: map(g.after, f) }),
 			}),
@@ -515,49 +528,69 @@ export async function seek<TContext = any, TState = any>(
 		}
 	}
 
+	const description = isDescribed(goal)
+		? goal.description(ctx)
+		: 'anonymous goal';
 	if (isAssertion(goal)) {
-		const getTestResultAndState = (c: TContext) =>
+		const hasGoalBeenMet = (c: TContext) =>
 			goal
 				.state(c)
-				.then((s) => [goal.test(c, s), s])
+				.then((s) => goal.test(c, s))
 				.catch((e) => {
-					if (e instanceof TestFailure) {
-						return [false, undefined];
+					if (e instanceof StateNotFound) {
+						return false;
 					}
 					throw e;
 				});
 
-		const [isMet, state] = await getTestResultAndState(ctx);
-
-		if (isMet) {
+		console.log(`${description}: checking...`);
+		if (await hasGoalBeenMet(ctx)) {
+			console.log(`${description}: true`);
 			// The goal has been met
 			return true;
 		}
 
 		if (isSeekable(goal)) {
+			console.log(`${description}: not ready`);
+
 			// Check if pre-conditions are met
-			if (!!goal.before && !(await seek(goal.before, ctx))) {
-				// Cannot try the goal action since some preconditions are not met
-				return false;
+			if (goal.before) {
+				console.log(`${description}: seeking preconditions...`);
+				if (!(await seek(goal.before, ctx))) {
+					return false;
+				}
+				console.log(`${description}: preconditions met!`);
 			}
 
-			// Run the action
+			// Run the action. State may have changed after running the before
+			// goals so get the state again. T
+			// TODO: is there a way to know ahead of time
+			// if seeking the before goal is expected to change the state? That would
+			// avoid having to do this extra call to state
+			const state = await goal.state(ctx).catch(() => undefined);
+			console.log(`${description}: running the action...`);
 			await goal.action(ctx, state);
 
 			// Get the state again and run the test with the
 			// new state. If the state could not be met, something
 			// failed (reason is unknown at this point)
-			const [isMetAfterAction] = await getTestResultAndState(ctx);
-			if (!isMetAfterAction) {
+			if (!(await hasGoalBeenMet(ctx))) {
+				console.log(`${description}: failed!`);
 				return false;
 			}
 
 			// The goal is achieved if the postconditions are met.
-			return !goal.after || seek(goal.after, ctx);
+			console.log(`${description}: success!`);
+			if (goal.after) {
+				console.log(`${description}: seeking postconditions ...`);
+				return seek(goal.after, ctx);
+			}
+			return true;
 		}
 	}
 
 	// If we get here, then the test failed
+	console.log(`${description}: failed!`);
 	return false;
 }
 
@@ -649,6 +682,16 @@ export const after = <TContext = any, TState = any>(
 };
 
 /**
+ * Combinator to extend a goal with a description
+ */
+export const describe = <TContext = any, TState = any>(
+	goal: Assertion<TContext, TState>,
+	description: Description<TContext>,
+): Goal<TContext, TState> => {
+	return of({ ...goal, description });
+};
+
+/**
  * The exported Goal object is the recommended way to interact with goals
  */
 export const Goal = {
@@ -658,6 +701,7 @@ export const Goal = {
 	action,
 	before,
 	after,
+	describe,
 	all,
 	any,
 	and,

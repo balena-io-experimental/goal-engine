@@ -1,9 +1,8 @@
 // An action perfors an asynchronouse operation based on a given
 // context and some current state
-export type Action<TContext = any, TState = any> = (
-	c: TContext,
-	s?: TState,
-) => Promise<unknown>;
+export type Action<TContext = any, TState = any> =
+	| ((c: TContext) => Promise<unknown>)
+	| ((c: TContext, s: TState) => Promise<unknown>);
 
 export const isAction = (x: unknown): x is Action =>
 	x != null && typeof x === 'function';
@@ -17,7 +16,7 @@ export const map =
 		a: Action<TContext, TState>,
 		f: (c: TOtherContext) => TContext,
 	): Action<TOtherContext, TState> =>
-	(c: TOtherContext, s?: TState) =>
+	(c: TOtherContext, s: TState) =>
 		a(f(c), s);
 
 /**
