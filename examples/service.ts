@@ -62,7 +62,7 @@ export const Service = async ({
 	}
 };
 
-export const ServiceIsInstalled = Goal.describe(
+export const ServiceContainerExists = Goal.describe(
 	Goal.of({
 		state: Service,
 		// TODO; this test should also compare the current/target configurations
@@ -97,7 +97,7 @@ export const ServiceIsRunning = Goal.describe(
 		test: (_: ServiceContext, { status }: Service) => status === 'running',
 		action: ({ docker }: ServiceContext, { containerId }: Service) =>
 			docker.getContainer(containerId).start(),
-		before: ServiceIsInstalled,
+		before: ServiceContainerExists,
 	}),
 	({ appName, serviceName }) =>
 		`Service ${appName}.${serviceName} should be running`,

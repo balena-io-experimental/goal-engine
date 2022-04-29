@@ -47,16 +47,15 @@ export const ImageExists = Goal.describe(
 		test: (_: ImageContext, { imageId }) => !!imageId,
 		action: ({ serviceImage, docker }: ImageContext) =>
 			new Promise((resolve, reject) =>
-				docker.pull(serviceImage, {}, (err, stream) => {
-					if (err) {
-						reject(err);
-					}
-
-					stream.on('data', () => void 0);
-					stream.on('error', reject);
-					stream.on('close', resolve);
-					stream.on('finish', resolve);
-				}),
+				docker
+					.pull(serviceImage)
+					.catch(reject)
+					.then((stream) => {
+						stream.on('data', () => void 0);
+						stream.on('error', reject);
+						stream.on('close', resolve);
+						stream.on('finish', resolve);
+					}),
 			),
 	}),
 	({ appName, serviceName }) =>
