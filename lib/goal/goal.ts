@@ -545,7 +545,7 @@ export async function seek<TContext = any, TState = any>(
 
 		console.log(`${description}: checking...`);
 		if (await hasGoalBeenMet(ctx)) {
-			console.log(`${description}: true`);
+			console.log(`${description}: ready!`);
 			// The goal has been met
 			return true;
 		}
@@ -580,7 +580,7 @@ export async function seek<TContext = any, TState = any>(
 			}
 
 			// The goal is achieved if the postconditions are met.
-			console.log(`${description}: success!`);
+			console.log(`${description}: ready!`);
 			if (goal.after) {
 				console.log(`${description}: seeking postconditions ...`);
 				return seek(goal.after, ctx);
