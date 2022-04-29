@@ -10,12 +10,10 @@
 		"declaration": true,
 		"skipLibCheck": true,
 		"paths": {
+			"~/lib": ["lib/index.ts"],
 			"~/tests": ["tests/chai.ts"]
 		},
 		"lib": ["es2021"]
 	},
-	"include": [
-		"lib/**/*.ts",
-		"tests/**/*.ts"
-	]
+	"include": ["lib/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"]
 }
