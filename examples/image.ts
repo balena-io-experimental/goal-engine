@@ -34,8 +34,8 @@ export const Image = async ({
 			imageId: img.Id,
 		};
 	} catch (e) {
-		if (isStatusError(e)) {
-			throw new StateNotFound(`Image not found:  ${serviceImage}`);
+		if (isStatusError(e) && e.statusCode === 404) {
+			throw new StateNotFound(`Image not found:  ${serviceImage}`, e);
 		}
 		throw e;
 	}
