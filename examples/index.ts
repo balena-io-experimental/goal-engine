@@ -9,7 +9,7 @@ const docker = new Docker();
 		appName: 'my-project',
 		serviceName: 'main',
 		serviceImage: 'alpine:latest',
-		cmd: ['sleep', 'infinity'],
+		cmd: ['sleep', '10'],
 		docker,
 	});
 })();

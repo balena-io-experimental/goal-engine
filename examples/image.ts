@@ -1,20 +1,14 @@
 import { Goal, StateNotFound } from '~/lib';
 import * as Docker from 'dockerode';
 
+import { isStatusError } from './errors';
+
 export interface ImageContext {
 	readonly appName: string;
 	readonly serviceName: string;
 	readonly serviceImage: string;
 
 	readonly docker: Docker;
-}
-
-export interface StatusError extends Error {
-	statusCode: number;
-}
-
-export function isStatusError(x: unknown): x is StatusError {
-	return x instanceof Error && Number.isInteger((x as any).statusCode);
 }
 
 export interface Image {
@@ -59,5 +53,5 @@ export const ImageExists = Goal.describe(
 			),
 	}),
 	({ appName, serviceName }) =>
-		`Image for service ${appName}.${serviceName} should exist`,
+		`${appName}.services.${serviceName}.image_exists`,
 );

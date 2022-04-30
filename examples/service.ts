@@ -2,6 +2,8 @@ import { Goal, StateNotFound } from '~/lib';
 import * as Docker from 'dockerode';
 import { ImageExists } from './image';
 
+import { isStatusError } from './errors';
+
 export interface ServiceContext {
 	readonly appName: string;
 	readonly serviceName: string;
@@ -19,6 +21,7 @@ export interface Service {
 	readonly status: string;
 	readonly createdAt: Date;
 	readonly containerId: string;
+	readonly cmd: string[];
 }
 
 export const Service = async ({
@@ -46,27 +49,106 @@ export const Service = async ({
 
 	try {
 		const serviceInspect = await docker.getContainer(svc.Id).inspect();
-		const { Id: containerId, Created, State, Name: name } = serviceInspect;
+		const {
+			Id: containerId,
+			Created,
+			State,
+			Name: name,
+			Config,
+		} = serviceInspect;
 
 		return {
 			name,
 			status: State.Status,
 			containerId,
 			createdAt: new Date(Created),
+			cmd: Config.Cmd,
 		};
 	} catch (e: any) {
-		throw new StateNotFound(
-			`No service found for application '${appName}' and service '${serviceName}'.`,
-			e,
-		);
+		if (isStatusError(e)) {
+			throw new StateNotFound(
+				`No service found for application '${appName}' and service '${serviceName}'.`,
+				e,
+			);
+		}
+		throw e;
 	}
 };
+
+// compare current and target configurations
+const isEqualConfig = (ctx: ServiceContext, svc: Service) =>
+	ctx.cmd.length === svc.cmd.length &&
+	ctx.cmd.every((v, i) => v === svc.cmd[i]);
+
+export const ServiceIsStopped = Goal.describe(
+	Goal.of({
+		state: Service,
+		test: (_: ServiceContext, { status }: Service) =>
+			['stopped', 'exited', 'dead'].includes(status.toLowerCase()),
+		// Getting the service could fail, as there are no preconditions
+		// requiring the container to exist before, so we prepare for that by checking for undefined
+		action: async ({ docker }: ServiceContext, s?: Service) => {
+			if (s === undefined) {
+				return;
+			}
+
+			try {
+				await docker.getContainer(s.containerId).stop();
+			} catch (e) {
+				if (isStatusError(e) && [304, 404].includes(e.statusCode)) {
+					return;
+				}
+				throw e;
+			}
+		},
+	}),
+	({ appName, serviceName }) => `${appName}.services.${serviceName}.is_stopped`,
+);
+
+export const ServiceContainerDoesNotExist = Goal.describe(
+	Goal.of({
+		state: async (ctx: ServiceContext) => {
+			try {
+				return await Service(ctx);
+			} catch (e) {
+				// If getting the state fails then the container does not
+				// exist
+				if (e instanceof StateNotFound) {
+					return true;
+				}
+				throw e;
+			}
+		},
+		test: (_: ServiceContext, s: Service | true) => s === true,
+		action: async ({ docker }: ServiceContext, s: Service | true) => {
+			// This should never happen
+			if (s === true) {
+				return;
+			}
+
+			try {
+				await docker.getContainer(s.containerId).remove({ v: true });
+			} catch (e) {
+				if (isStatusError(e) && e.statusCode === 404) {
+					// The container was already removed
+					return;
+				}
+				throw e;
+			}
+		},
+		before: ServiceIsStopped,
+	}),
+	({ appName, serviceName }) =>
+		`${appName}.services.${serviceName}.container_deleted`,
+);
 
 export const ServiceContainerExists = Goal.describe(
 	Goal.of({
 		state: Service,
-		// TODO; this test should also compare the current/target configurations
-		test: (_: ServiceContext, { status }: Service) => status === 'created',
+		// If service exist but is dead, the test needs to fail as we cannot
+		// start the container, and it needs to be deleted first
+		test: (ctx: ServiceContext, svc: Service) =>
+			svc.status !== 'dead' && isEqualConfig(ctx, svc),
 		action: async ({
 			appName,
 			cmd,
@@ -84,21 +166,20 @@ export const ServiceContainerExists = Goal.describe(
 					'io.balena.service-name': serviceName,
 				},
 			}),
-		before: ImageExists,
+		before: Goal.and([ImageExists, ServiceContainerDoesNotExist]),
 	}),
 	({ appName, serviceName }) =>
-		`Service container for ${appName}.${serviceName} should exist`,
+		`${appName}.services.${serviceName}.container_exists`,
 );
 
 export const ServiceIsRunning = Goal.describe(
 	Goal.of({
 		state: Service,
-		// TODO; this test should also compare the current/target configurations
-		test: (_: ServiceContext, { status }: Service) => status === 'running',
+		test: (ctx: ServiceContext, svc: Service) =>
+			svc.status === 'running' && isEqualConfig(ctx, svc),
 		action: ({ docker }: ServiceContext, { containerId }: Service) =>
 			docker.getContainer(containerId).start(),
 		before: ServiceContainerExists,
 	}),
-	({ appName, serviceName }) =>
-		`Service ${appName}.${serviceName} should be running`,
+	({ appName, serviceName }) => `${appName}.services.${serviceName}.is_running`,
 );
