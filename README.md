@@ -1,34 +1,70 @@
-# Goal Engine
+# Goal Engine (experimental, to be named)
 
-This is an proof-of-concept framework for creating goal driven systems in typescript. Instead of
-prescribing an execution path, this type of system defines a set of goals that can be achieved, and
-the engine decides, based on a given target, on the best path to achieve the goal.
+A declarative toolkit for writing self-healing system agents.
 
-A goal is specified by
+This tool provides a library for creating control systems that need to operate with little to no feedback from a centralized control.
+This is particularly useful in edge computing applications, where connectivity to the Internet may not be guaranteed, but system
+operation needs to continue to function, and recover in the case of power outages and subsystem failures.
 
-- a test function, which determines if the goal has been met, e.g. has file X been downlaoded
-- an optional action, providing a mechanism to achieve the goal, e.g. download file X
-- an optional set of pre-conditions, or "before goals" that need to be met before trying the action. e.g. does the target directory for file X exist? Are there at least Y bytes of disk available to download file X?.
-- an optional set of post-conditions, or "after goals". e.g. is a reboot necessary to apply a configuration
+- **Fully declarative typescript API:** no need to write how the system will behave. Just declare the system goals and their dependencies and
+  the library will figure out the best path between the current state of the system and a given target.
+- **Integrated error management:** all operations failures are handled in a centralized way, the failing operation and the cause are communicated,
+  and the overall execution is interrupted so it can be retried.
+- **Monitor the state of the system:** as the declared system goals conform a graph, that makes it easy to observe state of the system and of the
+  overall operation. Future improvements will make it easier to add a visualization layer for better observability.
+- **Minimal dependencies:** the core library is mostly self contained and the API makes use of dependency injection for interaction with other systems.
 
-Using this definition it is easy to see that goals in the system provide a graph, allowing the engine to calculate
-paths to achieve one or more target goals. This way of describing goals also allows for easy extensibility,
-as goals are not required to be "actionable" (only the test is required), but may become actionable if the system
-requires the extra complexity. For instance, the goal of "there are at least Y bytes of disk available to download file X", could
-become actionable by adding a mechanism to free-up disk space.
+## How does it work?
 
-As a proof of concept, this implementation only provides a naive evaluation algorithm, described as follows
+The unit of execution of the library is a `Goal`. A goal encodes a specific state of the underlying system that is desired. A goal is specified at minimum by
 
-**Seek goal X**
+- a mechanism to get a piece of state, e.g. the directory contents,
+- a way to test if the goal has been achieved, e.g. a given file exists in a directory.
 
-1. Run goal X test. If the test succeeds, then the goal has already been achieved
-2. Otherwise, seek all the "before goals", if one cannot be met, terminate as goal X cannot be met.
-3. If all the pre-conditions have been met, run the action. Terminate if the action fails.
-4. If the action suceeds, test the goal again. If the test fails terminate as the goal cannot be met.
-5. If the test succeeds, seek all after goals. If all after goals have been met, the goal has been achieved.
+Additionally a goal can be actionable, meaning it may specify a mechanism to reach the goal if it has not been met yet, e.g. create the file. Finally a goal may specify
+dependencies, which are goals that need to be met before the goal action can be tried, e.g. target directory needs to allow write access.
 
-A more advanced algorithm may optimize the order of evaluation of the goals, cache goal results where the state of the system is not
-expected to change, etc.
+Given a specific target goal, the runtime will backtrack from the target looking for unmet dependencies, and will try to seek those actionable dependencies
+in order until the target is met.
+
+Example:
+
+```
+import { Goal } from 'goal-engine';
+
+const FileExists = Goal.of({
+	state: (filePath: string) =>
+		fs
+			.access(filePath)
+			.catch(() => false)
+			.then(() => true),
+	test: (_: string, exists: boolean) => exists,
+	action: (filePath: string) => fs.open(filePath, 'w').then((fd) => fd.close()),
+});
+
+// This creates the file /tmp/hello if it doesn't exist
+await FileExists.seek('/tmp/hello');
+```
+
+## Documentation
+
+### State
+
+TODO
+
+### Test
+
+### Action
+
+TODO
+
+### Pre-conditions
+
+### Goal
+
+#### Operations
+
+#### Combinations
 
 ## Example
 
