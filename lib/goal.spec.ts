@@ -2,7 +2,7 @@ import { expect } from '~/tests';
 
 import { Goal, Always, Never } from './goal';
 import * as sinon from 'sinon';
-import { TestFailure } from './test';
+import { StateNotFound } from './state';
 
 describe('Goal', function () {
 	describe('map', () => {
@@ -144,12 +144,12 @@ describe('Goal', function () {
 			expect(await Goal.seek(myGoal, { threshold: 5 })).to.be.true;
 		});
 
-		it('fails if getting the state throws a TestFailure and modifying state fails', async () => {
+		it('fails if getting the state throws a StateNotFound and modifying state fails', async () => {
 			const action = sinon.spy();
 			const myGoal = Goal.of({
 				state: () =>
 					Promise.reject(
-						new TestFailure(
+						new StateNotFound(
 							'could not get the state but this should be considered a test failure',
 						),
 					),
@@ -160,11 +160,11 @@ describe('Goal', function () {
 			expect(action).to.have.been.called;
 		});
 
-		it('fails if getting the state throws a TestFailure and there is no way to modify the state', async () => {
+		it('fails if getting the state throws a StateNotFound and there is no way to modify the state', async () => {
 			const myGoal = Goal.of({
 				state: () =>
 					Promise.reject(
-						new TestFailure(
+						new StateNotFound(
 							'could not get the state but this should be considered a test failure',
 						),
 					),
