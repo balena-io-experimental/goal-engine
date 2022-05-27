@@ -45,14 +45,20 @@ type LogContext = {
 };
 
 const LogLevel = Goal.of({
+	// state defines a way to get the system state independent of the goal, in this
+	// case, state returns the contents of the configuration file.
 	state: ({ configPath }: LogContext) =>
 		fs.readFile(configPath, { encoding: 'utf8' }).catch((e) => {
+			// the StateNotFound exception tells the engine to not terminate, but consider this
+			// case the same that with a failed test
 			throw new StateNotFound(`Configuration file not found: ${configPath}`, e);
 		}),
+
+	// The test checks if the goal is met. This won't be called if the file does not exist
 	test: ({ level }: LogContext, contents: string) =>
 		contents
 			.split(/\r?\n/)
-			// Look for a line with the given level
+			// Return true if a line with the given level exists
 			.some((line) => new RegExp(`loglevel=${level}`).test(line)),
 });
 
@@ -93,8 +99,8 @@ when trying to seek the goal, it will inform through the logging system that an 
 runtime, and the call to `seek()` will return `false`;
 
 Now let's say that we want to make sure some other goal is met before we apply the configuration. This could be anything: that
-the service is running, that a mountpoint exists, etc. For simplicity, let's say we want to check that the file exists before we can write to it.
-We can achieve this by creating a new goal.
+the service is running, that a mountpoint exists, etc. For simplicity, let's say we want to check that the configuration file exists before we can write to it.
+We can first create a generic goal for checking the existence of a file.
 
 ```typescript
 const FileExists = Goal.of({
@@ -117,8 +123,8 @@ And now we can link our `LogLevel` goal with our newly created `FileExists` goal
 const LogLevel = Goal.of({
 	/** state, test and action definitions go here */
 
-	// FileExists.map creates a new goal that receives a LogContext as input
-	// we need to use map so the expected inputs match
+	// FileExists.map creates a new goal that receives a LogContext as input.
+	// We need to use map so the expected inputs match.
 	before: FileExists.map(({ configPath }: LogContext) => configPath),
 });
 
@@ -145,6 +151,10 @@ The following graph describes dependencies between the goals of the system.
 
 ![Docker service controller](./docs/assets/compose.png)
 
+Note the `^` symbol in the graph. This indicates an
+operation between goals, that tells the engine that both goals linked by the symbol (`image downloaded` and `container removed`) must be met
+before the goal `container exist` can be tried.
+
 Running
 
 ```
@@ -153,7 +163,7 @@ npm install && npm run example
 
 will launch a docker container (requires docker installed) with the name `my-project_main` and the command `sleep infinity`.
 
-See what happens if you run the command twice. See what happens if you change the command in [examples/index.ts](./examples/index.ts) tool
+See what happens if you run the command again. See what happens if you change the command in [examples/index.ts](./examples/index.ts) to
 
 ```
 cmd: ['sleep', '30'],
