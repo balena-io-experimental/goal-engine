@@ -4,7 +4,7 @@ A declarative toolkit for writing self-healing system agents.
 
 This tool provides a library for creating control systems that need to operate with little to no feedback from a centralized control.
 This is particularly useful in edge computing applications, where connectivity to the Internet may not be guaranteed, but system
-operation needs to continue to function, and recover in the case of power outages and subsystem failures.
+operation needs to continue to function, and recover in the case of power outages or subsystem failures.
 
 - **Fully declarative typescript API:** no need to write how the system will behave. Just declare the system goals and their dependencies and
   the library will figure out the best path between the current state of the system and a given target.
@@ -29,9 +29,74 @@ in order until the target is met.
 
 Example:
 
-```
-import { Goal } from 'goal-engine';
+Let's say we have a sub-system controlled by a configuration file `/etc/dummy.conf`, that may include a configuration variable
+`loglevel` to control the system verbosity with the possible values `info` or `error`.
 
+Let's write first a system to check if the level is set to a specific value. This is how to do it with the library
+
+```typescript
+import { Goal, StateNotFound } from 'goal-engine';
+import { promises as fs } from 'fs';
+
+// Defines a context type for the goal
+type LogContext = {
+	configPath: string;
+	level: 'info' | 'error';
+};
+
+const LogLevel = Goal.of({
+	state: ({ configPath }: LogContext) =>
+		fs.readFile(configPath, { encoding: 'utf8' }).catch((e) => {
+			throw new StateNotFound(`Configuration file not found: ${configPath}`, e);
+		}),
+	test: ({ level }: LogContext, contents: string) =>
+		contents
+			.split(/\r?\n/)
+			// Look for a line with the given level
+			.some((line) => new RegExp(`loglevel=${level}`).test(line)),
+});
+
+// This will succeed if the configuration already exists with the value `info`
+await LogLevel.seek({ configPath: '/etc/dummy.conf', level: 'info' });
+```
+
+This is not terribly useful though, let's now add a way to control the logging level. We can do this by adding an `action`, which is the mechanism through which the goal can be achieved.
+
+```typescript
+const LogLevel = Goal.of({
+	/** state and test definitions go here */
+	action: ({ configPath, level }: LogContext, contents = '') =>
+		fs.writeFile(
+			configPath,
+			contents
+				.split(/\r?\n/)
+				// Remove any lines with log configuration
+				.filter((line) => new RegExp(`loglevel=.+`).test(line))
+				// Append the new configuration line
+				.concat(`loglevel=${level}`)
+				// Join the file with newline
+				.join('\n'),
+			'utf8',
+		),
+});
+
+// This will check for the logging configuration and will change it to `info` if
+// is set to some other value
+await LogLevel.seek({ configPath: '/etc/dummy.conf', level: 'info' });
+```
+
+Calling `seek` will try to achieve the goal. If the configuration is already set at the right level, it will terminate
+immediately, otherwise it will modify the file with the right loglevel.
+
+Note that we do not do any error handling on the action. The execution of the goal will catch any errors
+when trying to seek the goal, it will inform through the logging system that an error has occurred and where in the
+runtime, and the call to `seek()` will return `false`;
+
+Now let's say that we want to make sure some other goal is met before we apply the configuration. This could be anything: that
+the service is running, that a mountpoint exists, etc. For simplicity, let's say we want to check that the file exists before we can write to it.
+We can achieve this by creating a new goal.
+
+```typescript
 const FileExists = Goal.of({
 	state: (filePath: string) =>
 		fs
@@ -46,32 +111,65 @@ const FileExists = Goal.of({
 await FileExists.seek('/tmp/hello');
 ```
 
-## Documentation
+And now we can link our `LogLevel` goal with our newly created `FileExists` goal.
 
-### State
+```
+const LogLevel = Goal.of({
+  /** state, test and action definitions go here */
 
-TODO
+  // FileExists.map creates a new goal that receives a LogContext as input
+	// we need to use map so the expected inputs match
+	before: FileExists.map(({ configPath }: LogContext) => configPath),
+})
 
-### Test
 
-### Action
+// This will first create the configuration file if it does not exist
+// and then add the given configuration data
+await LogLevel.seek({ configPath: '/etc/dummy.conf', level: 'info' });
+```
 
-TODO
+The `before` property establishes a requirement between the `LogLevel` goal and the `FileExists` goal. It tells the engine that
+before the `LogLevel` action can be tried, the requirements need to be met. The engine will backtrack to try to meet the required
+goals.
 
-### Pre-conditions
+Again, if an error occurs at any stage, the engine will report the error message and the error location to the logging system and the `seek` call
+will return false.
 
-### Goal
+If the process is interrupted at any step, calling `seek` will perform any missing operations required to meet the goal.
 
-#### Operations
-
-#### Combinations
+This is a very simple example, but illustrates the advantages of the approach.
 
 ## Example
 
-See directory `example/` for some sample code on how to use. Running
+A more complex example can be found on the [example/](./example/) folder. The example implements a simple docker service controller.
+The following graph describes dependencies between the goals of the system.
+
+![Docker service controller](./docs/assets/compose.png)
+
+Running
 
 ```
 npm install && npm run example
 ```
 
-Runs the example (requires docker installed);
+will launch a docker container (requires docker installed) with the name `my-project_main` and the command `sleep infinity`.
+
+See what happens if you run the command twice. See what happens if you change the command in [examples/index.ts](./examples/index.ts) tool
+
+```
+cmd: ['sleep', '30'],
+```
+
+## Documentation
+
+**TODO**
+
+### State
+
+### Test
+
+### Action
+
+### Goal
+
+### Goal operations
