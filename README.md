@@ -140,7 +140,7 @@ This is a very simple example, but illustrates the advantages of the approach.
 
 ## Example
 
-A more complex example can be found on the [example/](./example/) folder. The example implements a simple docker service controller.
+A more complex example can be found on the [examples/](./examples/) folder. The example implements a simple docker service controller.
 The following graph describes dependencies between the goals of the system.
 
 ![Docker service controller](./docs/assets/compose.png)
