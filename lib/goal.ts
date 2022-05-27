@@ -1,5 +1,6 @@
 import { AssertionError } from 'assert';
 
+import { Description, Described } from './described';
 import { State, StateNotFound } from './state';
 import { Test } from './test';
 import { Action } from './action';
@@ -127,20 +128,6 @@ type Link<TContext = any, TState = any> =
 
 // Utility type to make some properties of a type optional
 type WithOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-// A description returns a proper description for a goal given the
-// input context
-export type Description<TContext = any> = (ctx: TContext) => string;
-
-export interface Described<TContext = any> {
-	description: Description<TContext>;
-}
-
-export const isDescribed = (x: unknown): x is Described =>
-	x != null &&
-	typeof x === 'object' &&
-	x.hasOwnProperty('description') &&
-	typeof (x as any).description === 'function';
 
 /**
  * A goal extends the Seekable interface with utility methods,
@@ -528,7 +515,7 @@ export async function seek<TContext = any, TState = any>(
 		}
 	}
 
-	const description = isDescribed(goal)
+	const description = Described.is(goal)
 		? goal.description(ctx)
 		: 'anonymous goal';
 	if (isAssertion(goal)) {
@@ -688,7 +675,7 @@ export const describe = <TContext = any, TState = any>(
 	goal: Assertion<TContext, TState>,
 	description: Description<TContext>,
 ): Goal<TContext, TState> => {
-	return of({ ...goal, description });
+	return of(Described.of(goal, description));
 };
 
 /**
