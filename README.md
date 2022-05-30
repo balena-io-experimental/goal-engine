@@ -77,7 +77,10 @@ const LogLevel = Goal.of({
 			contents
 				.split(/\r?\n/)
 				// Remove any lines with log configuration
-				.filter((line) => new RegExp(`loglevel=.+`).test(line))
+				.filter(
+					(line) =>
+						line.trim().length > 0 && !new RegExp(`loglevel=.+`).test(line),
+				)
 				// Append the new configuration line
 				.concat(`loglevel=${level}`)
 				// Join the file with newline

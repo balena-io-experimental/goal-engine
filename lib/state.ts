@@ -19,9 +19,9 @@ export const isState = (x: unknown): x is State =>
  */
 export class StateNotFound extends Error {
 	constructor(message?: string, cause?: Error) {
-		// @ts-ignore this is not yet supported on typescript
+		// @ts-ignore this as is not yet supported on typescript
 		// 4.5.5 but is available in Node 16.
-		// TODO: remove this when typescript adds supported
+		// TODO: remove this when typescript adds the type support
 		super(message, { cause });
 	}
 }
