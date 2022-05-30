@@ -58,11 +58,6 @@ export interface Seekable<TContext = any, TState = any>
 	 * Conditions that need to be met before running the action.
 	 */
 	readonly before?: Link<TContext>;
-
-	/**
-	 * Conditions that need to be met after running the action.
-	 */
-	readonly after?: Link<TContext>;
 }
 
 /**
@@ -182,21 +177,19 @@ function fromSeekable<TContext = any, TState = any>({
 	test: _test = (_: TContext, s: TState) => !!s,
 	action: _action,
 	before: _before,
-	after: _after,
 	...extra
 }: WithOptional<
 	Seekable<TContext, TState>,
-	'test' | 'action' | 'before' | 'after'
+	'test' | 'action' | 'before'
 >): Goal<TContext, TState> {
 	const goal = {
 		state,
 		test: _test,
 		// Only add the seekable fields if one
 		// of the following is defined
-		...((_action || _before || _after) && {
+		...((_action || _before) && {
 			action: _action || (() => Promise.resolve(void 0)),
 			...(_before && { before: _before }),
-			...(_after && { after: _after }),
 		}),
 		...extra,
 		map<TInputContext>(
@@ -328,14 +321,14 @@ export function of<TContext = any>({
 	state,
 }: WithOptional<
 	Seekable<TContext, boolean> & Described<TContext>,
-	'test' | 'action' | 'before' | 'after' | 'description'
+	'test' | 'action' | 'before' | 'description'
 >): Goal<TContext, boolean>;
 export function of<TContext = any, TState = any>({
 	state,
 	test,
 }: WithOptional<
 	Seekable<TContext, TState> & Described<TContext>,
-	'action' | 'before' | 'after' | 'description'
+	'action' | 'before' | 'description'
 >): Goal<TContext, TState>;
 /**
  * Combine an array of state objects into a state that returns a tuple of
@@ -384,10 +377,7 @@ export function of<
 // Method implementation
 export function of<TContext = any, TState = any>(
 	input:
-		| WithOptional<
-				Seekable<TContext, TState>,
-				'test' | 'action' | 'before' | 'after'
-		  >
+		| WithOptional<Seekable<TContext, TState>, 'test' | 'action' | 'before'>
 		| [Assertion<TContext>, ...Array<Assertion<TContext>>]
 		| { [K in keyof TState]: Assertion<TContext, TState[K]> },
 ) {
@@ -450,7 +440,6 @@ export function map<TContext = any, TState = any, TInputContext = any>(
 			...(isSeekable(g) && {
 				action: Action.map(g.action, f),
 				...(g.before && { before: map(g.before, f) }),
-				...(g.after && { after: map(g.after, f) }),
 			}),
 		});
 	}
@@ -566,12 +555,6 @@ export async function seek<TContext = any, TState = any>(
 				return false;
 			}
 
-			// The goal is achieved if the postconditions are met.
-			console.log(`${description}: ready!`);
-			if (goal.after) {
-				console.log(`${description}: seeking postconditions ...`);
-				return seek(goal.after, ctx);
-			}
 			return true;
 		}
 	}
@@ -656,19 +639,6 @@ export const before = <TContext = any, TState = any>(
 };
 
 /**
- * Combinator to extend a goal with a postcondition.
- *
- * Be careful if applying this to a combined goal (from a dictionary or a tuple)
- * since it will effectively change the way the goal is evaluated.
- */
-export const after = <TContext = any, TState = any>(
-	goal: Assertion<TContext, TState>,
-	_after: Link<TContext>,
-): Goal<TContext, TState> => {
-	return of({ ...goal, after: _after });
-};
-
-/**
  * Combinator to extend a goal with a description
  */
 export const describe = <TContext = any, TState = any>(
@@ -687,7 +657,6 @@ export const Goal = {
 	seek,
 	action,
 	before,
-	after,
 	describe,
 	all,
 	any,
