@@ -39,4 +39,31 @@ describe('Test', () => {
 			expect(lenGtFive('goodbye', 0)).to.be.true;
 		});
 	});
+
+	describe('any', () => {
+		it('combines a dictionary of tests into a tests that takes a dictionary state', async () => {
+			const lenGtFive = (_: string, s: string) => s.length > 5;
+			const numGtSix = (_: string, x: number) => x > 6;
+
+			const tester = Test.any({ lenGtFive, numGtSix });
+
+			// Succeeds when any of the tests succeed
+			expect(tester('', { lenGtFive: 'goodbye', numGtSix: 7 })).to.be.true;
+			expect(tester('', { lenGtFive: 'goodbye', numGtSix: 5 })).to.be.true;
+			expect(tester('', { lenGtFive: 'hello', numGtSix: 7 })).to.be.true;
+			expect(tester('', { lenGtFive: 'hello', numGtSix: 4 })).to.be.false;
+		});
+
+		it('combines a list of test into a test that takes a list as state', async () => {
+			const lenGtFive = (_: string, s: string) => s.length > 5;
+			const numGtSix = (_: string, x: number) => x > 6;
+
+			const tester = Test.any([lenGtFive, numGtSix]);
+			// Succeeds when any of the tests succeed
+			expect(tester('', ['goodbye', 7])).to.be.true;
+			expect(tester('', ['goodbye', 5])).to.be.true;
+			expect(tester('', ['hello', 7])).to.be.true;
+			expect(tester('', ['hello', 4])).to.be.false;
+		});
+	});
 });

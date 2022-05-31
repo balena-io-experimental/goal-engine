@@ -1,5 +1,3 @@
-// A description returns a proper description for a goal given the
-
 import { AssertionError } from 'assert';
 
 // Utility type to prevent an input from being null
@@ -51,9 +49,21 @@ export const of = <
 	});
 };
 
+/**
+ * Transform an action that receives a context A into an action that receives
+ * a context B by applying a transformation function
+ */
+export const map = <TOtherContext = any, TContext = any>(
+	a: Described<TContext>,
+	f: (c: TOtherContext) => TContext,
+): Described<TOtherContext> => ({
+	description: (c: TOtherContext) => a.description(f(c)),
+});
+
 export const Described = {
 	is,
 	of,
+	map,
 };
 
 export default Described;

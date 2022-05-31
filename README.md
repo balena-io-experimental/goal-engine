@@ -125,11 +125,10 @@ And now we can link our `LogLevel` goal with our newly created `FileExists` goal
 ```typescript
 const LogLevel = Goal.of({
 	/** state, test and action definitions go here */
-
+})
 	// FileExists.map creates a new goal that receives a LogContext as input.
 	// We need to use map so the expected inputs match.
-	before: FileExists.map(({ configPath }: LogContext) => configPath),
-});
+	.requires(FileExists.map(({ configPath }: LogContext) => configPath));
 
 // This will first create the configuration file if it does not exist
 // and then add the given configuration data

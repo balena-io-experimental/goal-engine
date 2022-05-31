@@ -4,7 +4,7 @@ export type Action<TContext = any, TState = any> =
 	| ((c: TContext) => Promise<unknown>)
 	| ((c: TContext, s: TState) => Promise<unknown>);
 
-export const isAction = (x: unknown): x is Action =>
+export const is = (x: unknown): x is Action =>
 	x != null && typeof x === 'function';
 
 /**
@@ -38,7 +38,7 @@ export function of<
 
 // Utility export
 export const Action = {
-	is: isAction,
+	is,
 	of,
 	map,
 };

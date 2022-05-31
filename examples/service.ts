@@ -136,8 +136,7 @@ export const ServiceContainerDoesNotExist = Goal.describe(
 				throw e;
 			}
 		},
-		before: ServiceIsStopped,
-	}),
+	}).requires(ServiceIsStopped),
 	({ appName, serviceName }) =>
 		`${appName}.services.${serviceName}.container_deleted`,
 );
@@ -166,8 +165,12 @@ export const ServiceContainerExists = Goal.describe(
 					'io.balena.service-name': serviceName,
 				},
 			}),
-		before: Goal.and([ImageExists, ServiceContainerDoesNotExist]),
-	}),
+	}).requires(
+		Goal.and([
+			ImageExists.map(({ cmd, ...imageCtx }: ServiceContext) => imageCtx),
+			ServiceContainerDoesNotExist,
+		]),
+	),
 	({ appName, serviceName }) =>
 		`${appName}.services.${serviceName}.container_exists`,
 );
@@ -177,9 +180,10 @@ export const ServiceIsRunning = Goal.describe(
 		state: Service,
 		test: (ctx: ServiceContext, svc: Service) =>
 			svc.status === 'running' && isEqualConfig(ctx, svc),
-		action: ({ docker }: ServiceContext, { containerId }: Service) =>
+	})
+		.action(({ docker }: ServiceContext, { containerId }: Service) =>
 			docker.getContainer(containerId).start(),
-		before: ServiceContainerExists,
-	}),
+		)
+		.requires(ServiceContainerExists),
 	({ appName, serviceName }) => `${appName}.services.${serviceName}.is_running`,
 );

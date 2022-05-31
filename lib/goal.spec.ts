@@ -5,6 +5,9 @@ import * as sinon from 'sinon';
 import { StateNotFound } from './state';
 
 describe('Goal', function () {
+	before(() => {
+		console.log = () => void 0;
+	});
 	describe('map', () => {
 		it('creates a goal with a different context type from an input goal', async () => {
 			const LessThan256Chars = Goal.of({
@@ -61,8 +64,7 @@ describe('Goal', function () {
 			// state is always true
 			const myGoal = Goal.of({ state: () => Promise.resolve(true) });
 
-			expect(myGoal.test(void 0, true)).to.be.true;
-			expect(myGoal.test(void 0, false)).to.be.false;
+			expect(await myGoal.test(void 0)).to.be.true;
 			expect(await myGoal.seek(0)).to.be.true;
 		});
 
@@ -73,8 +75,7 @@ describe('Goal', function () {
 				test: (_: unknown, s) => !s,
 			});
 
-			expect(myGoal.test(void 0, true)).to.be.false;
-			expect(myGoal.test(void 0, false)).to.be.true;
+			expect(await myGoal.test(void 0)).to.be.false;
 			expect(await myGoal.seek(0)).to.be.false;
 		});
 
@@ -87,17 +88,17 @@ describe('Goal', function () {
 
 			const c = Goal.of([a, b]);
 			expect(await c.state(0)).to.deep.equal([10, 'Hello World']);
-			expect(c.test(0, [10, 'Hello world'])).to.be.true;
+			expect(await c.test(0)).to.be.true;
 		});
 
 		it('allows to combine goals as a dict', async () => {
 			const num = Goal.of({
 				state: (x: string) => Promise.resolve(x.length),
-				test: (_: string) => true,
+				test: (_) => true,
 			});
 			const str = Goal.of({
 				state: (x: string) => Promise.resolve(`Hello ${x}`),
-				test: (_: string) => true,
+				test: (_) => true,
 			});
 
 			const combined = Goal.of({ number: num, string: str });
@@ -105,12 +106,7 @@ describe('Goal', function () {
 				number: 5,
 				string: 'Hello world',
 			});
-			expect(
-				combined.test('world', {
-					number: 5,
-					string: 'Hello world',
-				}),
-			).to.be.true;
+			expect(await combined.test('world')).to.be.true;
 		});
 	});
 
@@ -153,8 +149,7 @@ describe('Goal', function () {
 							'could not get the state but this should be considered a test failure',
 						),
 					),
-				action,
-			});
+			}).action(action);
 
 			expect(await Goal.seek(myGoal, null)).to.be.false;
 			expect(action).to.have.been.called;
@@ -185,7 +180,7 @@ describe('Goal', function () {
 			const myGoal = Goal.action(
 				Goal.of({
 					state: (_: C) => Promise.resolve(state),
-					test: (c, s) => s.count > c.threshold,
+					test: (c: C, s: S) => s.count > c.threshold,
 				}),
 				actionSpy,
 			); // the action has no effect but it should be called nonetheless
@@ -205,7 +200,7 @@ describe('Goal', function () {
 			// another more complex goal
 			const otherGoal = Goal.of({
 				state: (_: C) => Promise.resolve(state),
-				test: (c, s) => s.count > c.threshold,
+				test: (c: C, s: S) => s.count > c.threshold,
 				action: () => {
 					// Update the state
 					state.count++;
@@ -228,11 +223,11 @@ describe('Goal', function () {
 
 			// another more complex goal
 			const actionSpy = sinon.spy();
-			const otherGoal = Goal.before(
+			const otherGoal = Goal.requires(
 				Goal.action(
 					Goal.of({
 						state: (_: C) => Promise.resolve(state),
-						test: (c, s) => s.count > c.threshold,
+						test: (c: C, s: S) => s.count > c.threshold,
 					}),
 					actionSpy,
 				),
@@ -244,8 +239,6 @@ describe('Goal', function () {
 		});
 
 		it('only calls the action if before goals are met', async () => {
-			const myGoal = Always;
-
 			type S = { count: number };
 			type C = { threshold: number };
 
@@ -255,10 +248,9 @@ describe('Goal', function () {
 			const actionSpy = sinon.spy();
 			const otherGoal = Goal.of({
 				state: (_: C) => Promise.resolve(state),
-				test: (c, s) => s.count > c.threshold,
+				test: (c: C, s: S) => s.count > c.threshold,
 				action: actionSpy,
-				before: myGoal,
-			});
+			}).requires(Always);
 
 			expect(await Goal.seek(otherGoal, { threshold: 5 })).to.be.false;
 			expect(actionSpy).to.have.been.called;
@@ -276,9 +268,8 @@ describe('Goal', function () {
 			// another more complex goal
 			const otherGoal = Goal.of({
 				state: (_: C) => Promise.resolve(state),
-				test: (c, s) => s.count > c.threshold,
-				before: myGoal,
-			});
+				test: (c: C, s: S) => s.count > c.threshold,
+			}).requires(myGoal);
 
 			expect(await Goal.seek(otherGoal, { threshold: 5 })).to.be.false;
 			expect(actionSpy).to.have.been.called;
@@ -287,7 +278,6 @@ describe('Goal', function () {
 		describe('Seeking operations', () => {
 			it('and: fails at the first failure', async () => {
 				const state = sinon.stub().resolves(true);
-
 				const g = Goal.and([Always, Never, Goal.of({ state })]);
 				expect(await Goal.seek(g, 0)).to.be.false;
 				expect(state).to.not.have.been.called;
@@ -328,12 +318,13 @@ describe('Goal', function () {
 
 			it('succeeds if calling the actions in the tuple causes the goal to be met', async () => {
 				type S = { count: number };
+				type C = { min: number; max: number };
 
 				const state: S = { count: 5 };
 
 				const greaterThan = Goal.of({
 					state: () => Promise.resolve(state),
-					test: ({ min }: { min: number }, s) => s.count > min,
+					test: ({ min }: C, s) => s.count > min,
 					action: () => {
 						// Update the state
 						state.count++;
@@ -343,11 +334,13 @@ describe('Goal', function () {
 
 				const lowerThan = Goal.of({
 					state: () => Promise.resolve(state),
-					test: ({ max }: { max: number }, s) => s.count < max,
+					test: ({ max }: C, s) => s.count < max,
 				});
 
 				const combined = Goal.of([greaterThan, lowerThan]);
 
+				// The combined goal is not met before the test
+				expect(await combined.test({ min: 5, max: 8 })).to.be.false;
 				expect(await Goal.seek(combined, { min: 5, max: 8 })).to.be.true;
 				expect(state.count).to.equal(6);
 				expect(await Goal.seek(combined, { min: 5, max: 6 })).to.be.false;

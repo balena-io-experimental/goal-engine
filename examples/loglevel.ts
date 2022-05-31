@@ -42,10 +42,10 @@ const LogLevel = Goal.of({
 				.join('\n'),
 			'utf8',
 		),
+})
 	// FileExists.map creates a new goal that receives a LogContext as input
 	// we need to use map so the expected inputs match
-	before: FileExists.map(({ configPath }: LogContext) => configPath),
-});
+	.requires(FileExists.map(({ configPath }: LogContext) => configPath));
 
 (async () => {
 	// Try to reach the goal

@@ -7,7 +7,7 @@ export type State<TContext = any, TState = any> = (
 	c: TContext,
 ) => Promise<TState>;
 
-export const isState = (x: unknown): x is State =>
+export const is = (x: unknown): x is State =>
 	// TODO: figure out if there is a way to get the return type of the function to check
 	// if it is a promise, without actually calling the function
 	x != null && typeof x === 'function';
@@ -40,21 +40,19 @@ export const map =
 
 // Infer the context from a dictionary. This will only make sense if all the states
 // have the same context otherwise it will return invalid types like `number & string`
-type DictionaryContext<
+type ContextFromStateDict<
 	T extends { [K in keyof TState]: State<any, TState[K]> },
 	TState = any,
-> = T extends {
-	[K in keyof TState]: State<infer TContext, TState[K]>;
-}
+> = T extends { [K in keyof TState]: State<infer TContext, TState[K]> }
 	? TContext
 	: never;
 
-type TupleStates<
+type StatesFromStateTuple<
 	T extends Array<State<TContext>> = [],
 	TContext = any,
 > = T extends [State<TContext, infer TState>, ...infer TTail]
 	? TTail extends Array<State<TContext>>
-		? [TState, ...TupleStates<TTail, TContext>]
+		? [TState, ...StatesFromStateTuple<TTail, TContext>]
 		: [TState]
 	: [];
 
@@ -62,7 +60,7 @@ type TupleStates<
  * Combine an array of state objects into a state that returns a tuple of
  * results
  */
-const fromTuple =
+export const fromTuple =
 	<
 		TContext = any,
 		TState = any,
@@ -71,11 +69,11 @@ const fromTuple =
 		states: [State<TContext, TState>, ...TTuple],
 	): State<
 		TContext,
-		[State<TContext, TState>, ...TupleStates<TTuple, TContext>]
+		[State<TContext, TState>, ...StatesFromStateTuple<TTuple, TContext>]
 	> =>
 	(c: TContext) =>
 		Promise.all(states.map((s) => s(c))) as Promise<
-			[State<TContext, TState>, ...TupleStates<TTuple, TContext>]
+			[State<TContext, TState>, ...StatesFromStateTuple<TTuple, TContext>]
 		>;
 
 /**
@@ -87,10 +85,10 @@ const fromTuple =
  * combinators from incompatible types, however such combinators are unusable as the type
  * signature won't match anything.
  */
-const fromDict =
+export const fromDict =
 	<TContext = any, TState = any>(states: {
 		[K in keyof TState]: State<TContext, TState[K]>;
-	}): State<TContext, { [K in keyof TState]: TState[K] }> =>
+	}): State<TContext, TState> =>
 	async (c: TContext) => {
 		// Get the individual states first as an array
 		const values = await Promise.all(
@@ -120,7 +118,7 @@ export function of<
 	TTuple extends Array<State<TContext>> = Array<State<TContext>>,
 >(
 	states: [State<TContext, TState>, ...TTuple],
-): State<TContext, [TState, ...TupleStates<TTuple, TContext>]>;
+): State<TContext, [TState, ...StatesFromStateTuple<TTuple, TContext>]>;
 /**
  * Combine a dictionary of state objects into a state that returns a dictionary of
  * the results.
@@ -142,7 +140,7 @@ export function of<
  * });
  */
 export function of<
-	TContext extends DictionaryContext<TStateDict, TState>,
+	TContext extends ContextFromStateDict<TStateDict, TState>,
 	TState = any,
 	TStateDict extends {
 		[K in keyof TState]: State<any, TState[K]>;
@@ -151,7 +149,7 @@ export function of<
 	states: {
 		[K in keyof TState]: State<TContext, TState[K]>;
 	} & TStateDict,
-): State<TContext, { [K in keyof TState]: TState[K] }>;
+): State<TContext, TState>;
 /**
  * Create a state from a function
  */
@@ -181,10 +179,8 @@ export function of<
 
 export const State = {
 	of,
-	is: isState,
+	is,
 	map,
-	fromDict,
-	fromTuple,
 };
 
 export default State;
