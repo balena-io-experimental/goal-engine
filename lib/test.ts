@@ -21,6 +21,13 @@ export const map =
 	(c: TOtherContext, s: TState) =>
 		t(f(c), s);
 
+/**
+ * Utility type to calculate the combination of an array
+ * of Test objects into a Test that returns a tuple of the individual
+ * state elements.
+ *
+ * It is used by the `any()` and `all()` functions to calculate the combined type of the output .
+ */
 type StatesFromTestTuple<
 	T extends Array<Test<TContext>>,
 	TContext = any,
@@ -30,16 +37,19 @@ type StatesFromTestTuple<
 		: [TState]
 	: [];
 
-// Infer the context from a dictionary. This will only make sense if all the states
-// have the same context otherwise it will return invalid types like `number & string`
+/**
+ * Utility type to infer the unified context from a dictionary of Test objects. This is used to
+ * infer the combined context for the `any()` and `all()` function and is not meant to be exported.
+ *
+ * Because of the way type inference works in conditional types works (see the link below), the
+ * resulting type will be the intersection of the individual context types for each element in the dictionary.
+ *
+ * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-8.html#type-inference-in-conditional-types
+ */
 type ContextFromTestDict<
 	T extends { [K in keyof TState]: Test<any, TState[K]> },
 	TState = any,
-> = T extends {
-	[K in keyof TState]: Test<infer TContext, TState[K]>;
-}
-	? TContext
-	: never;
+> = T[keyof TState] extends Test<infer TContext> ? TContext : never;
 
 /**
  * Combine a dict of test objects into a test that returns true if all
@@ -56,7 +66,7 @@ export function allFromDict<TContext = any, TState = any>(tests: {
  * Combine an array of test objects into a test that returns true if all
  * tests succeed
  */
-function allFromTuple<
+export function allFromTuple<
 	TContext = any,
 	TState = any,
 	TTuple extends Array<Test<TContext>> = Array<Test<TContext, any>>,
@@ -98,6 +108,9 @@ function anyFromTuple<
 /**
  * Combine an array of test objects into a test that returns true if
  * all tests succeed
+ *
+ * NOTE: All Test objects of the tuple need to have the same context type otherwise the
+ * compiler infer the resulting context as `never`
  */
 export function all<
 	TContext = any,
@@ -145,6 +158,9 @@ export function all<
 /**
  * Combine an array of test objects into a test that returns true if
  * any of the tests succeed
+ *
+ * NOTE: All Test objects of the tuple need to have the same context type otherwise the
+ * compiler infer the resulting context as `never`
  */
 export function any<
 	TContext = any,

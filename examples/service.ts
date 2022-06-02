@@ -166,24 +166,23 @@ export const ServiceContainerExists = Goal.describe(
 				},
 			}),
 	}).requires(
-		Goal.and([
-			ImageExists.map(({ cmd, ...imageCtx }: ServiceContext) => imageCtx),
+		Goal.and({
+			ImageExists,
 			ServiceContainerDoesNotExist,
-		]),
+		}),
 	),
 	({ appName, serviceName }) =>
 		`${appName}.services.${serviceName}.container_exists`,
 );
 
-export const ServiceIsRunning = Goal.describe(
-	Goal.of({
-		state: Service,
-		test: (ctx: ServiceContext, svc: Service) =>
-			svc.status === 'running' && isEqualConfig(ctx, svc),
-	})
-		.action(({ docker }: ServiceContext, { containerId }: Service) =>
-			docker.getContainer(containerId).start(),
-		)
-		.requires(ServiceContainerExists),
-	({ appName, serviceName }) => `${appName}.services.${serviceName}.is_running`,
-);
+export const ServiceIsRunning = Goal.of({
+	description: ({ appName, serviceName }) =>
+		`${appName}.services.${serviceName}.is_running`,
+	state: Service,
+	test: (ctx: ServiceContext, svc: Service) =>
+		svc.status === 'running' && isEqualConfig(ctx, svc),
+})
+	.action(({ docker }: ServiceContext, { containerId }: Service) =>
+		docker.getContainer(containerId).start(),
+	)
+	.requires(ServiceContainerExists);

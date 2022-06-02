@@ -54,8 +54,13 @@ export interface Any<TContext = any, TState = any>
 }
 
 /**
- * Utility type to infer the combined state type of a tuple of seekable objects
+ * Utility type to calculate the combination of an array
+ * of Testable objects into a testable that returns a tuple of the individual
+ * state elements.
+ *
+ * It is used by the functions `and`, `or`, `all`, `any` to calculate the combined type of the output .
  */
+
 type StatesFromTestableTuple<
 	T extends Array<Testable<TContext>>,
 	TContext = any,
@@ -89,40 +94,33 @@ const fromTuple = <
 			StatesFromTestableTuple<TTuple, TContext>
 		>,
 		test: ['all', 'and'].includes(op)
-			? Test.all(nodes.map((n) => n.test))
-			: Test.any(nodes.map((n) => n.test)),
+			? (Test.all(nodes.map((n) => n.test)) as Test<TContext>)
+			: (Test.any(nodes.map((n) => n.test)) as Test<TContext>),
 	};
 };
 
 /**
- * Utility type to infer the context from a dictionary.
- * This will only make sense if all the node elements in the
- * dictionary have the same context.
- * Other it will return invalid types like `number & string`
+ * Utility type to infer the unified context from a dictionary of Testable objects. This is used to
+ * infer the combined context for the `and`, `all`, `or`, `any` functions and is not meant to be exported.
+ *
+ * Because of the way type inference works in conditional types works (see the link below), the
+ * resulting type will be the intersection of the individual context types for each element in the dictionary.
+ *
+ * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-8.html#type-inference-in-conditional-types
  */
 type ContextFromTestableDict<
 	T extends { [K in keyof TState]: Testable<any, TState[K]> },
 	TState = any,
-> = T extends {
-	[K in keyof TState]: Testable<infer TContext, TState[K]>;
-}
-	? TContext
-	: never;
+> = T[keyof TState] extends Testable<infer TContext> ? TContext : never;
 
 /**
  * Combine a dictionary of node objects into an operation on a dictionary of results as state*
- *
- * IMPORTANT: All state objects must have the same context type
- *
- * TODO: we have not found a way to reliably validate the inputs to prevent creating
- * combinators from incompatible context, however such combinators are unusable as the type
- * signature won't match anything.
  *
  * @template TContext  - common context for all node objects in the dictionary
  * @template TState  - the target state of the resulting goal
  * @template TStateDict - the format for the input goal dictionary
  * @param nodes - dictionary of node objects
- * @returns a combined goal operates on the combined dictionary of states
+ * @returns a combined testable object that operates on the combined dictionary of states
  */
 export const fromDict = <TContext = any, TState = any>(
 	op: Operator,

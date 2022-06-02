@@ -60,7 +60,7 @@ export interface Goal<TContext = any, TState = any> {
 	/**
 	 * Create a new goal that requires the given goal before being met. Does not modify the current goal.
 	 *
-	 * @param before - requirement for the new goal
+	 * @param r - requirement for the new goal
 	 */
 	requires(r: Goal<TContext>): Goal<TContext, TState>;
 
@@ -71,7 +71,7 @@ export interface Goal<TContext = any, TState = any> {
 	 * actions from preconditions in order to reach the goal. If any of the operations fail
 	 * the function will throw.
 	 *
-	 * @param context - context to provide to the goal
+	 * @param c - context to provide to the goal
 	 * @returns true if the goal has been met
 	 */
 	seek(c: TContext): Promise<boolean>;
@@ -100,10 +100,7 @@ export function map<TContext = any, TState = any, TInputContext = any>(
 	g: Goal<TContext, TState>,
 	f: (c: TInputContext) => TContext,
 ): Goal<TInputContext, TState> {
-	return of({
-		...(Described.is(g.node) && Described.map(g.node, f)),
-		...Node.map(g.node, f),
-	});
+	return g.map(f);
 }
 
 /**
@@ -113,15 +110,10 @@ export function map<TContext = any, TState = any, TInputContext = any>(
  * since it will effectively change the way the goal is evaluated.
  */
 export const action = <TContext = any, TState = any>(
-	goal: Goal<TContext, TState>,
-	_action: Action<TContext, TState>,
+	g: Goal<TContext, TState>,
+	a: Action<TContext, TState>,
 ): Goal<TContext, TState> => {
-	if (Operation.is(goal.node)) {
-		// Modifying the action on an operation turns it into a regular goal
-		const { op, nodes, ...node } = goal.node;
-		return of({ ...node, action: _action });
-	}
-	return of({ ...goal.node, action: _action });
+	return g.action(a);
 };
 
 /**
@@ -131,25 +123,10 @@ export const action = <TContext = any, TState = any>(
  * since it will effectively change the way the goal is evaluated.
  */
 export const requires = <TContext = any, TState = any>(
-	goal: Goal<TContext, TState>,
-	_requires: Goal<TContext>,
+	g: Goal<TContext, TState>,
+	r: Goal<TContext>,
 ): Goal<TContext, TState> => {
-	if (Operation.is(goal.node)) {
-		// Adding a requirement on an operation turns it into an actionable
-		const { op, nodes, ...node } = goal.node;
-		return of({
-			action: () => Promise.resolve(void 0),
-			...node,
-			requires: _requires.node,
-		});
-	}
-
-	return of({
-		// Set a default action in case the node does not have one
-		action: () => Promise.resolve(void 0),
-		...goal.node,
-		requires: _requires.node,
-	});
+	return g.requires(r);
 };
 
 /**
@@ -161,6 +138,16 @@ export const describe = <TContext = any, TState = any>(
 ): Goal<TContext, TState> => {
 	return fromNode(Described.of(g.node, d));
 };
+
+/**
+ * Try to reach the goal from the given context
+ */
+export function seek<TContext = any, TState = any>(
+	g: Goal<TContext, TState>,
+	c: TContext,
+) {
+	return g.seek(c);
+}
 
 /**
  * Create a single goal from a testable input
@@ -176,7 +163,10 @@ function fromNode<TContext = any, TState = any>({
 	state,
 	test: _test = (_: TContext, s: TState) => !!s,
 	...extra
-}: WithOptional<Node<TContext, TState>, 'test'>): Goal<TContext, TState> {
+}: WithOptional<
+	Node<TContext, TState> & Described<TContext>,
+	'test' | 'description'
+>): Goal<TContext, TState> {
 	const node = {
 		state,
 		test: _test,
@@ -203,16 +193,42 @@ function fromNode<TContext = any, TState = any>({
 		map<TInputContext>(
 			f: (c: TInputContext) => TContext,
 		): Goal<TInputContext, TState> {
-			return map(goal, f);
+			return fromNode({
+				...(Described.is(node) && Described.map(node, f)),
+				...Node.map(node, f),
+			});
 		},
 		action(a: Action<TContext, TState>) {
-			return action(goal, a);
+			if (Operation.is(node)) {
+				// Modifying the action on an operation turns it into a regular goal
+				const { op, nodes, ...nodeOnly } = node;
+				return fromNode({ ...nodeOnly, action: a } as Actionable<
+					TContext,
+					TState
+				>);
+			}
+			return fromNode({ ...node, action: a });
 		},
 		requires(r: Goal<TContext>) {
-			return requires(goal, r);
+			if (Operation.is(node)) {
+				// Adding a requirement on an operation turns it into an actionable
+				const { op, nodes, ...nodeOnly } = node;
+				return fromNode({
+					action: () => Promise.resolve(void 0),
+					...nodeOnly,
+					requires: r.node,
+				} as Actionable<TContext, TState>);
+			}
+
+			return fromNode({
+				// Set a default action in case the node does not have one
+				action: () => Promise.resolve(void 0),
+				...node,
+				requires: r.node,
+			});
 		},
 		seek(c: TContext) {
-			return seek(goal, c);
+			return seekNode(node, c);
 		},
 	};
 
@@ -220,8 +236,13 @@ function fromNode<TContext = any, TState = any>({
 }
 
 /**
- * Utility type to infer the combined state type of a tuple of goal objects
+ * Utility type to calculate the combination of an array
+ * of Goal objects into a Goal that returns a tuple of the individual
+ * state elements.
+ *
+ * It is used by the functions `of`, `and`, `all`, `or` and `any` to calculate the combined type of the output .
  */
+
 type StatesFromGoalTuple<
 	T extends Array<Goal<TContext>>,
 	TContext = any,
@@ -238,7 +259,7 @@ type StatesFromGoalTuple<
  * @template TContext = any - the common context for all goals in the tuple
  * @template TTuple extends Array<Goal<TContext>> = Array<Goal<TContext>> - the type of the goal list
  * @param goals - an array of goal objects
- * @returns a combined goal that acts on a tuple of the individual states
+ * @returns a combined goal that acts on a tuple of the individual goals
  */
 const fromTuple = <
 	TContext = any,
@@ -252,34 +273,27 @@ const fromTuple = <
 };
 
 /**
- * Utility type to infer the context from a dictionary.
- * This will only make sense if all the goal elements in the
- * dictionary have the same context.
- * Other it will return invalid types like `number & string`
+ * Utility type to infer the unified context from a dictionary of Goal objects. This is used to
+ * infer the combined context for the `of`, `and`, `all`, `or`, `any` functions and is not meant to be exported.
+ *
+ * Because of the way type inference works in conditional types works (see the link below), the
+ * resulting type will be the intersection of the individual context types for each element in the dictionary.
+ *
+ * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-8.html#type-inference-in-conditional-types
  */
 type ContextFromGoalDict<
 	T extends { [K in keyof TState]: Goal<any, TState[K]> },
 	TState = any,
-> = T extends {
-	[K in keyof TState]: Goal<infer TContext, TState[K]>;
-}
-	? TContext
-	: never;
+> = T[keyof TState] extends Goal<infer TContext> ? TContext : never;
 
 /**
  * Combine a dictionary of goal objects into a goal that operates on a dictionary of results as state*
- *
- * IMPORTANT: All state objects must have the same context type
- *
- * TODO: we have not found a way to reliably validate the inputs to prevent creating
- * combinators from incompatible context, however such combinators are unusable as the type
- * signature won't match anything.
  *
  * @template TContext  - common context for all goal objects in the dictionary
  * @template TState  - the target state of the resulting goal
  * @template TStateDict - the format for the input goal dictionary
  * @param goals - dictionary of goal objects
- * @returns a combined goal operates on the combined dictionary of states
+ * @returns a combined goal that operates on the dictionary of goals
  */
 const fromDict = <TContext = any, TState = any>(goals: {
 	[K in keyof TState]: Goal<TContext, TState[K]>;
@@ -309,11 +323,17 @@ export function of<TContext = any>({
 	state,
 }: WithOptional<Testable<TContext, boolean>, 'test'>): Goal<TContext, boolean>;
 export function of<TContext = any, TState = any>(
-	input: WithOptional<Actionable<TContext, TState>, 'action' | 'requires'>,
+	input: WithOptional<
+		Actionable<TContext, TState> & Described<TContext>,
+		'action' | 'requires' | 'description'
+	>,
 ): Goal<TContext, TState>;
 /**
  * Combine an array of state objects into a state that returns a tuple of
  * results
+ *
+ * NOTE: All Goal objects of the tuple need to have the same context type otherwise the
+ * compiler will infer the resulting context as `never`
  *
  * @template TContext = any - the common context for all goals in the tuple
  * @template TState = any - the first state of the tuple
@@ -331,12 +351,6 @@ export function of<
 /**
  * Combine a dictionary of goal objects into a goal that operates on a dictionary of results as state*
  *
- * IMPORTANT: All state objects must have the same context type
- *
- * TODO: we have not found a way to reliably validate the inputs to prevent creating
- * combinators from incompatible context, however such combinators are unusable as the type
- * signature won't match anything.
- *
  * @template TContext  - common context for all seekable objects in the dictionary
  * @template TState  - the target state of the resulting goal
  * @template TStateDict - the format for the input goal dictionary
@@ -350,10 +364,8 @@ export function of<
 		[K in keyof TState]: Goal<any, TState[K]>;
 	} = { [K in keyof TState]: Goal<any, TState[K]> },
 >(
-	goals: {
-		[K in keyof TState]: Goal<TContext, TState[K]>;
-	} & TStateDict,
-): Goal<TContext, { [K in keyof TState]: TState[K] }>;
+	goals: { [K in keyof TState]: Goal<TContext, TState[K]> } & TStateDict,
+): Goal<TContext, TState>;
 // Method implementation
 export function of<TContext = any, TState = any>(
 	input:
@@ -403,7 +415,7 @@ export function and<
 	goals: {
 		[K in keyof TState]: Goal<TContext, TState[K]>;
 	} & TStateDict,
-): Goal<TContext, { [K in keyof TState]: TState[K] }>;
+): Goal<TContext, TState>;
 export function and<TContext = any, TState = any>(
 	goals:
 		| [Goal<TContext>, ...Array<Goal<TContext>>]
@@ -447,7 +459,7 @@ export function or<
 	goals: {
 		[K in keyof TState]: Goal<TContext, TState[K]>;
 	} & TStateDict,
-): Goal<TContext, { [K in keyof TState]: TState[K] }>;
+): Goal<TContext, TState>;
 export function or<TContext = any, TState = any>(
 	goals:
 		| [Goal<TContext>, ...Array<Goal<TContext>>]
@@ -491,7 +503,7 @@ export function all<
 	goals: {
 		[K in keyof TState]: Goal<TContext, TState[K]>;
 	} & TStateDict,
-): Goal<TContext, { [K in keyof TState]: TState[K] }>;
+): Goal<TContext, TState>;
 export function all<TContext = any, TState = any>(
 	goals:
 		| [Goal<TContext>, ...Array<Goal<TContext>>]
@@ -535,7 +547,7 @@ export function any<
 	goals: {
 		[K in keyof TState]: Goal<TContext, TState[K]>;
 	} & TStateDict,
-): Goal<TContext, { [K in keyof TState]: TState[K] }>;
+): Goal<TContext, TState>;
 export function any<TContext = any, TState = any>(
 	goals:
 		| [Goal<TContext>, ...Array<Goal<TContext>>]
@@ -556,13 +568,6 @@ export function any<TContext = any, TState = any>(
 			),
 		);
 	}
-}
-
-export function seek<TContext = any, TState = any>(
-	g: Goal<TContext, TState>,
-	c: TContext,
-) {
-	return seekNode(g.node, c);
 }
 
 /**

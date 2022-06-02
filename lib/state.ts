@@ -7,6 +7,7 @@ export type State<TContext = any, TState = any> = (
 	c: TContext,
 ) => Promise<TState>;
 
+// Type guard for a State object
 export const is = (x: unknown): x is State =>
 	// TODO: figure out if there is a way to get the return type of the function to check
 	// if it is a promise, without actually calling the function
@@ -38,15 +39,22 @@ export const map =
 	(c: TOtherContext) =>
 		s(f(c));
 
-// Infer the context from a dictionary. This will only make sense if all the states
-// have the same context otherwise it will return invalid types like `number & string`
-type ContextFromStateDict<
-	T extends { [K in keyof TState]: State<any, TState[K]> },
-	TState = any,
-> = T extends { [K in keyof TState]: State<infer TContext, TState[K]> }
-	? TContext
-	: never;
-
+/**
+ * Utility type to calculate the combination of an array
+ * of State objects into a State that returns a tuple of the individual
+ * state elements.
+ *
+ * It is used by the function `of()` to calculate the combined type of the output .
+ *
+ * @example:
+ * ````
+ * const hello = (x: string) => Promise.resolve(`Hello ${x}!!`);
+ * const length = (x: string) => Promise.resolve(x.length);
+ *
+ * // The resulting type is a State<string, [string, number]>
+ * const combined = State.of([hello, length]);
+ * ```
+ */
 type StatesFromStateTuple<
 	T extends Array<State<TContext>> = [],
 	TContext = any,
@@ -79,11 +87,6 @@ export const fromTuple =
 /**
  * Combine a dictionary of state objects into a state that returns a dictionary of
  * the results.
- *
- * **Note**: All state objects must have the same context type
- * TODO: we have not found a way to reliably validate the inputs to prevent creating
- * combinators from incompatible types, however such combinators are unusable as the type
- * signature won't match anything.
  */
 export const fromDict =
 	<TContext = any, TState = any>(states: {
@@ -109,8 +112,39 @@ export const fromDict =
 	};
 
 /**
+ * Utility type to infer the unified context from a dictionary of state objects. This is used to
+ * infer the combined context for the `of()` function and is not meant to be exported.
+ *
+ * Because of the way type inference works in conditional types works (see the link below), the
+ * resulting type will be the intersection of the individual context types for each element in the dictionary.
+ *
+ * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-8.html#type-inference-in-conditional-types
+ *
+ * @example
+ * ```
+ * const hello = (a: string) => Promise.resolve(`Hello ${a}!!`);
+ * const goodbye = (b: string) => Promise.resolve(`Goodbye ${b}!!`);
+ *
+ * // The combined context will be `string & string = string`
+ * const combined = State.of({hello, goodbye});
+ *
+ * const num = (b: number) => Promise.resolve(`Value is ${b}!!`);
+ *
+ * // The combined2 context will be `string & number = never`
+ * const combined2 = State.of({hello, num});
+ * 	````
+ */
+type ContextFromStateDict<
+	T extends { [K in keyof TState]: State<any, TState[K]> },
+	TState = any,
+> = T[keyof TState] extends State<infer TContext> ? TContext : never;
+
+/**
  * Combine an array of state objects into a state that returns a tuple of
  * results
+ *
+ * NOTE: All State objects of the tuple need to have the same context type otherwise the
+ * compiler infer the resulting context as `never`
  */
 export function of<
 	TContext = any,
@@ -120,13 +154,8 @@ export function of<
 	states: [State<TContext, TState>, ...TTuple],
 ): State<TContext, [TState, ...StatesFromStateTuple<TTuple, TContext>]>;
 /**
- * Combine a dictionary of state objects into a state that returns a dictionary of
+ * Combine a dictionary of State objects into a state that returns a dictionary of
  * the results.
- *
- * **Note**: All state objects must have the same context type
- * TODO: we have not found a way to reliably validate the inputs to prevent creating
- * combinators from incompatible types, however such combinators are unusable as the type
- * signature won't match anything.
  *
  * @example
  * const hello = (x: string) => Promise.resolve(`Hello ${x}!!`);
@@ -146,9 +175,7 @@ export function of<
 		[K in keyof TState]: State<any, TState[K]>;
 	} = { [K in keyof TState]: State<any, TState[K]> },
 >(
-	states: {
-		[K in keyof TState]: State<TContext, TState[K]>;
-	} & TStateDict,
+	states: { [K in keyof TState]: State<TContext, TState[K]> } & TStateDict,
 ): State<TContext, TState>;
 /**
  * Create a state from a function
