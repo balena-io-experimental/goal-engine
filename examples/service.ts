@@ -80,7 +80,7 @@ const isEqualConfig = (ctx: ServiceContext, svc: Service) =>
 	ctx.cmd.length === svc.cmd.length &&
 	ctx.cmd.every((v, i) => v === svc.cmd[i]);
 
-export const ServiceIsStopped = Goal.describe(
+export const ServiceIsStopped = Goal.description(
 	Goal.of({
 		state: Service,
 		test: (_: ServiceContext, { status }: Service) =>
@@ -105,7 +105,7 @@ export const ServiceIsStopped = Goal.describe(
 	({ appName, serviceName }) => `${appName}.services.${serviceName}.is_stopped`,
 );
 
-export const ServiceContainerDoesNotExist = Goal.describe(
+export const ServiceContainerDoesNotExist = Goal.description(
 	Goal.of({
 		state: async (ctx: ServiceContext) => {
 			try {
@@ -141,39 +141,40 @@ export const ServiceContainerDoesNotExist = Goal.describe(
 		`${appName}.services.${serviceName}.container_deleted`,
 );
 
-export const ServiceContainerExists = Goal.describe(
-	Goal.of({
-		state: Service,
-		// If service exist but is dead, the test needs to fail as we cannot
-		// start the container, and it needs to be deleted first
-		test: (ctx: ServiceContext, svc: Service) =>
-			svc.status !== 'dead' && isEqualConfig(ctx, svc),
-		action: async ({
-			appName,
-			cmd,
-			serviceName,
-			serviceImage,
-			docker,
-		}: ServiceContext) =>
-			// Try to start the container
-			docker.createContainer({
-				name: `${appName}_${serviceName}`,
-				Image: serviceImage,
-				Cmd: cmd,
-				Labels: {
-					'io.balena.app-name': appName,
-					'io.balena.service-name': serviceName,
-				},
-			}),
-	}).requires(
+export const ServiceContainerExists = Goal.of({
+	state: Service,
+	// If service exist but is dead, the test needs to fail as we cannot
+	// start the container, and it needs to be deleted first
+	test: (ctx: ServiceContext, svc: Service) =>
+		svc.status !== 'dead' && isEqualConfig(ctx, svc),
+	action: async ({
+		appName,
+		cmd,
+		serviceName,
+		serviceImage,
+		docker,
+	}: ServiceContext) =>
+		// Try to start the container
+		docker.createContainer({
+			name: `${appName}_${serviceName}`,
+			Image: serviceImage,
+			Cmd: cmd,
+			Labels: {
+				'io.balena.app-name': appName,
+				'io.balena.service-name': serviceName,
+			},
+		}),
+})
+	.requires(
 		Goal.and({
 			ImageExists,
 			ServiceContainerDoesNotExist,
 		}),
-	),
-	({ appName, serviceName }) =>
-		`${appName}.services.${serviceName}.container_exists`,
-);
+	)
+	.description(
+		({ appName, serviceName }) =>
+			`${appName}.services.${serviceName}.container_exists`,
+	);
 
 export const ServiceIsRunning = Goal.of({
 	description: ({ appName, serviceName }) =>

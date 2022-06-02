@@ -35,7 +35,7 @@ export const Image = async ({
 	}
 };
 
-export const ImageExists = Goal.describe(
+export const ImageExists = Goal.description(
 	Goal.of({
 		state: Image,
 		test: (_: ImageContext, { imageId }) => !!imageId,

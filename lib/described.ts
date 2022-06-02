@@ -36,9 +36,8 @@ export const of = <
 	if (typeof x === 'object' && x !== null) {
 		return { ...x, description };
 	} else if (typeof x === 'function') {
-		// clone the function
+		// clone the function and add the property to the clone
 		const f = x.bind({});
-
 		return Object.assign(f, { ...x, description });
 	}
 

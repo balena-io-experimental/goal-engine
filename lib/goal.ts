@@ -4,7 +4,7 @@ import { Described, Description } from './described';
 import { seek as seekNode } from './engine';
 import { Node } from './node';
 import { Operation, fromDict as opFromDict } from './operation';
-import { State } from './state';
+import { State, StateNotFound } from './state';
 import { Testable } from './testable';
 import { keys } from './utils';
 
@@ -15,17 +15,20 @@ export interface Goal<TContext = any, TState = any> {
 	/**
 	 * Node referenced by this goal
 	 */
-	readonly node: Node<TContext, TState>;
+	get node(): Node<TContext, TState>;
 
 	/**
-	 * Return the state of the referenced node. For operations
+	 * Utility function to return the state of the referenced node. For operations
 	 * the state of the operation is the state of the individual
 	 * nodes.
 	 */
 	state(c: TContext): Promise<TState>;
 
 	/**
-	 * Return true if the goal has been met. If the reference node points to an
+	 * Utility function to determine if the goal has been met.
+	 *
+	 * It works by querying the goal state and calling the test function on the given node.
+	 * If the referenced node points to an
 	 * operation, the result of the test is the result of the operation over the operands.
 	 */
 	test(c: TContext): Promise<boolean>;
@@ -42,7 +45,6 @@ export interface Goal<TContext = any, TState = any> {
 	 * const StringIsLessThan256Chars = Goal.map(LessThan256Chars, (x: string) => x.length);
 	 * await StringIsLessThan256Chars.seek('a'.repeat(256)) // should be false
 	 * ```
-	 *
 	 * @param f - transformation function
 	 */
 	map<TInputContext>(
@@ -75,6 +77,17 @@ export interface Goal<TContext = any, TState = any> {
 	 * @returns true if the goal has been met
 	 */
 	seek(c: TContext): Promise<boolean>;
+
+	/**
+	 * Creates a new goal with the description added to the node
+	 *
+	 * @param d - description function for the goal
+	 */
+	description<TC extends TContext>(
+		// NOTE: using just TContext instead of  `extends TContext` messes up with the
+		// type inference in ContextFromGoalDict. I have not figured out why, but this solves it
+		d: Description<TC>,
+	): Goal<TContext, TState>;
 }
 
 // Utility type to make some properties of a type optional
@@ -132,11 +145,11 @@ export const requires = <TContext = any, TState = any>(
 /**
  * Combinator to add a description to a goal
  */
-export const describe = <TContext = any, TState = any>(
+export const description = <TContext = any, TState = any>(
 	g: Goal<TContext, TState>,
 	d: Description<TContext>,
 ): Goal<TContext, TState> => {
-	return fromNode(Described.of(g.node, d));
+	return g.description(d);
 };
 
 /**
@@ -185,10 +198,15 @@ function fromNode<TContext = any, TState = any>({
 			return node.state(c);
 		},
 		async test(c: TContext): Promise<boolean> {
-			// QUESTION: the call to state() can throw. Should we catch it?
-			// Or should we let it slip?
-			const s = await node.state(c);
-			return node.test(c, s);
+			try {
+				const s = await node.state(c);
+				return node.test(c, s);
+			} catch (e) {
+				if (e instanceof StateNotFound) {
+					return false;
+				}
+				throw e;
+			}
 		},
 		map<TInputContext>(
 			f: (c: TInputContext) => TContext,
@@ -229,6 +247,9 @@ function fromNode<TContext = any, TState = any>({
 		},
 		seek(c: TContext) {
 			return seekNode(node, c);
+		},
+		description(d: Description) {
+			return fromNode(Described.of(node, d));
 		},
 	};
 
@@ -579,7 +600,7 @@ export const Goal = {
 	seek,
 	action,
 	requires,
-	describe,
+	description,
 	all,
 	any,
 	and,
