@@ -110,8 +110,8 @@ const FileExists = Goal.of({
 	state: (filePath: string) =>
 		fs
 			.access(filePath)
-			.catch(() => false)
-			.then(() => true),
+			.then(() => true)
+			.catch(() => false),
 	test: (_: string, exists: boolean) => exists,
 	action: (filePath: string) => fs.open(filePath, 'w').then((fd) => fd.close()),
 });
