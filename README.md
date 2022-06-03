@@ -153,7 +153,7 @@ The following graph describes dependencies between the goals of the system.
 
 ![Docker service controller](./docs/assets/compose.png)
 
-Note the `^` symbol in the graph. This indicates an
+Note the `∧` symbol in the graph. This indicates a logic `and`
 operation between goals, that tells the engine that both goals linked by the symbol (`image downloaded` and `container removed`) must be met
 before the goal `container exist` can be tried.
 
