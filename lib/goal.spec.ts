@@ -318,13 +318,12 @@ describe('Goal', function () {
 
 			it('succeeds if calling the actions in the tuple causes the goal to be met', async () => {
 				type S = { count: number };
-				type C = { min: number; max: number };
 
 				const state: S = { count: 5 };
 
 				const greaterThan = Goal.of({
 					state: () => Promise.resolve(state),
-					test: ({ min }: C, s) => s.count > min,
+					test: ({ min }: { min: number }, s) => s.count > min,
 					action: () => {
 						// Update the state
 						state.count++;
@@ -334,7 +333,7 @@ describe('Goal', function () {
 
 				const lowerThan = Goal.of({
 					state: () => Promise.resolve(state),
-					test: ({ max }: C, s) => s.count < max,
+					test: ({ max }: { max: number }, s) => s.count < max,
 				});
 
 				const combined = Goal.of([greaterThan, lowerThan]);

@@ -6,7 +6,7 @@ import { Node } from './node';
 import { Operation, fromDict as opFromDict } from './operation';
 import { State, StateNotFound } from './state';
 import { Testable } from './testable';
-import { keys } from './utils';
+import { keys, IntersectTuple } from './utils';
 
 /**
  * A goal is an utility interface to create and combine simple goals into more complex ones
@@ -274,6 +274,22 @@ type StatesFromGoalTuple<
 	: [];
 
 /**
+ * Utility type to calculate the combination of an array
+ * of Goal objects into a State that returns a tuple of the individual
+ * state elements.
+ *
+ * It is used by the function `of()` to calculate the combined type of the output .
+ */
+type ContextFromGoalTuple<T extends Goal[] = []> = T extends [
+	Goal<infer TContext>,
+	...infer TTail,
+]
+	? TTail extends Goal[]
+		? [TContext, ...ContextFromGoalTuple<TTail>]
+		: [TContext]
+	: [];
+
+/**
  * Combine an array of goal objects into goal that returns a tuple of
  * results
  *
@@ -363,12 +379,13 @@ export function of<TContext = any, TState = any>(
  * @returns a combined goal that acts on a tuple of the individual states
  */
 export function of<
-	TContext = any,
+	TContext extends IntersectTuple<ContextFromGoalTuple<TTuple>>,
 	TState = any,
-	TTuple extends Array<Goal<TContext>> = Array<Goal<TContext>>,
+	TTuple extends Goal[] = Goal[],
+	TTail extends Goal[] = Goal[],
 >(
-	goals: [Goal<TContext, TState>, ...TTuple],
-): Goal<TContext, [TState, ...StatesFromGoalTuple<TTuple, TContext>]>;
+	goals: [Goal<TContext, TState>, ...TTail] & TTuple,
+): Goal<TContext, [TState, ...StatesFromGoalTuple<TTail, TContext>]>;
 /**
  * Combine a dictionary of goal objects into a goal that operates on a dictionary of results as state*
  *
@@ -420,12 +437,13 @@ export const Never = of({ state: () => Promise.resolve(false) });
  * will fail when the first goal fails.
  */
 export function and<
-	TContext = any,
+	TContext extends IntersectTuple<ContextFromGoalTuple<TTuple>>,
 	TState = any,
-	TTuple extends Array<Goal<TContext>> = Array<Goal<TContext>>,
+	TTuple extends Goal[] = Goal[],
+	TTail extends Goal[] = Goal[],
 >(
-	goals: [Goal<TContext, TState>, ...TTuple],
-): Goal<TContext, [TState, ...StatesFromGoalTuple<TTuple, TContext>]>;
+	goals: [Goal<TContext, TState>, ...TTail] & TTuple,
+): Goal<TContext, [TState, ...StatesFromGoalTuple<TTail, TContext>]>;
 export function and<
 	TContext extends ContextFromGoalDict<TStateDict, TState>,
 	TState = any,
@@ -464,12 +482,13 @@ export function and<TContext = any, TState = any>(
  * will succeed when the first link succeeds.
  */
 export function or<
-	TContext = any,
+	TContext extends IntersectTuple<ContextFromGoalTuple<TTuple>>,
 	TState = any,
-	TTuple extends Array<Goal<TContext>> = Array<Goal<TContext>>,
+	TTuple extends Goal[] = Goal[],
+	TTail extends Goal[] = Goal[],
 >(
-	goals: [Goal<TContext, TState>, ...TTuple],
-): Goal<TContext, [TState, ...StatesFromGoalTuple<TTuple, TContext>]>;
+	goals: [Goal<TContext, TState>, ...TTail] & TTuple,
+): Goal<TContext, [TState, ...StatesFromGoalTuple<TTail, TContext>]>;
 export function or<
 	TContext extends ContextFromGoalDict<TStateDict, TState>,
 	TState = any,
@@ -508,12 +527,13 @@ export function or<TContext = any, TState = any>(
  * if all the linked goals succeed.
  */
 export function all<
-	TContext = any,
+	TContext extends IntersectTuple<ContextFromGoalTuple<TTuple>>,
 	TState = any,
-	TTuple extends Array<Goal<TContext>> = Array<Goal<TContext>>,
+	TTuple extends Goal[] = Goal[],
+	TTail extends Goal[] = Goal[],
 >(
-	goals: [Goal<TContext, TState>, ...TTuple],
-): Goal<TContext, [TState, ...StatesFromGoalTuple<TTuple, TContext>]>;
+	goals: [Goal<TContext, TState>, ...TTail] & TTuple,
+): Goal<TContext, [TState, ...StatesFromGoalTuple<TTail, TContext>]>;
 export function all<
 	TContext extends ContextFromGoalDict<TStateDict, TState>,
 	TState = any,
@@ -552,12 +572,13 @@ export function all<TContext = any, TState = any>(
  * when the first linked goal succeeds.
  */
 export function any<
-	TContext = any,
+	TContext extends IntersectTuple<ContextFromGoalTuple<TTuple>>,
 	TState = any,
-	TTuple extends Array<Goal<TContext>> = Array<Goal<TContext>>,
+	TTuple extends Goal[] = Goal[],
+	TTail extends Goal[] = Goal[],
 >(
-	goals: [Goal<TContext, TState>, ...TTuple],
-): Goal<TContext, [TState, ...StatesFromGoalTuple<TTuple, TContext>]>;
+	goals: [Goal<TContext, TState>, ...TTail] & TTuple,
+): Goal<TContext, [TState, ...StatesFromGoalTuple<TTail, TContext>]>;
 export function any<
 	TContext extends ContextFromGoalDict<TStateDict, TState>,
 	TState = any,

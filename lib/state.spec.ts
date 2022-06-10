@@ -21,7 +21,6 @@ describe('State', () => {
 			const length = (x: string) => Promise.resolve(x.length);
 
 			const greetings = State.of([hello, length]);
-
 			expect(await greetings('world')).to.deep.equal(['Hello world!!', 5]);
 		});
 

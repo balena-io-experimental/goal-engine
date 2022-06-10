@@ -1,4 +1,4 @@
-import { keys } from './utils';
+import { keys, IntersectTuple } from './utils';
 
 /**
  * A state is a function that reads some asynchronous state
@@ -62,6 +62,31 @@ type StatesFromStateTuple<
 	? TTail extends Array<State<TContext>>
 		? [TState, ...StatesFromStateTuple<TTail, TContext>]
 		: [TState]
+	: [];
+
+/**
+ * Utility type to calculate the combination of an array
+ * of State objects into a State that returns a tuple of the individual
+ * state elements.
+ *
+ * It is used by the function `of()` to calculate the combined type of the output .
+ *
+ * @example:
+ * ````
+ * const hello = ({a}: {a: number}) => Promise.resolve(`Number is ${a}!!`);
+ * const length = ({b}: {b: string}) => Promise.resolve(x.length);
+ *
+ * // The resulting type is a State<{a: number} & {b: string}, [string, number]>
+ * const combined = State.of([hello, length]);
+ * ```
+ */
+type ContextFromStateTuple<T extends State[] = []> = T extends [
+	State<infer TContext>,
+	...infer TTail,
+]
+	? TTail extends State[]
+		? [TContext, ...ContextFromStateTuple<TTail>]
+		: [TContext]
 	: [];
 
 /**
@@ -139,6 +164,11 @@ type ContextFromStateDict<
 	TState = any,
 > = T[keyof TState] extends State<infer TContext> ? TContext : never;
 
+const hello = ({ a }: { a: number }) => Promise.resolve(`Hello ${a}!!`);
+const length = ({ b }: { b: string }) => Promise.resolve(b.length);
+
+const greetings = of([hello, length]);
+
 /**
  * Combine an array of state objects into a state that returns a tuple of
  * results
@@ -147,11 +177,12 @@ type ContextFromStateDict<
  * compiler infer the resulting context as `never`
  */
 export function of<
-	TContext = any,
+	TContext extends IntersectTuple<ContextFromStateTuple<TInput>>,
 	TState = any,
-	TTuple extends Array<State<TContext>> = Array<State<TContext>>,
+	TTuple extends State[] = State[],
+	TInput extends State[] = State[],
 >(
-	states: [State<TContext, TState>, ...TTuple],
+	states: [State<TContext, TState>, ...TTuple] & TInput,
 ): State<TContext, [TState, ...StatesFromStateTuple<TTuple, TContext>]>;
 /**
  * Combine a dictionary of State objects into a state that returns a dictionary of
