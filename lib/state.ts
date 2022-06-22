@@ -164,11 +164,6 @@ type ContextFromStateDict<
 	TState = any,
 > = T[keyof TState] extends State<infer TContext> ? TContext : never;
 
-const hello = ({ a }: { a: number }) => Promise.resolve(`Hello ${a}!!`);
-const length = ({ b }: { b: string }) => Promise.resolve(b.length);
-
-const greetings = of([hello, length]);
-
 /**
  * Combine an array of state objects into a state that returns a tuple of
  * results
