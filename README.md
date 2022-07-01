@@ -165,11 +165,15 @@ npm install && npm run example
 
 will launch a docker container (requires docker installed) with the name `my-project_main` and the command `sleep infinity`.
 
+[![asciicast](https://asciinema.org/a/v9rhWBLzNG2nTuOxX6bmjLACV.svg)](https://asciinema.org/a/v9rhWBLzNG2nTuOxX6bmjLACV)
+
 See what happens if you run the command again. See what happens if you change the command in [examples/index.ts](./examples/index.ts) to
 
 ```
 cmd: ['sleep', '30'],
 ```
+
+[![asciicast](https://asciinema.org/a/9KKD3M6QW7yqCVF5DboQ6qQXa.svg)](https://asciinema.org/a/9KKD3M6QW7yqCVF5DboQ6qQXa)
 
 ## Documentation
 
